@@ -13,7 +13,7 @@ const router = Router();
 
 router.post('/', protect, upsertSettings);
 
-router.get('/student', studentProtect, getSettingsBystudent);
+router.get('/student', getSettingsBystudent);
 
 router.get('/:instituteId', protect, getSettingsByInstitute);
 
