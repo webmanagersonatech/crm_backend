@@ -5,6 +5,7 @@ import crypto from "crypto";
 export interface IApplication extends Document {
   applicationId: string;
   instituteId: string;
+  studentId: string;
   program: string;
   userId?: string;
   leadId?: string;
@@ -24,6 +25,7 @@ const ApplicationSchema = new Schema<IApplication>(
   {
     applicationId: { type: String, unique: true, index: true },
     instituteId: { type: String, required: true },
+    studentId: { type: String, },
     program: { type: String, required: true },
     userId: { type: String },
     leadId: { type: String },

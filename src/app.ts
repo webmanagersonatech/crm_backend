@@ -10,8 +10,11 @@ import formManagerRoutes from './modules/form-manage/routes';
 import applicationRoutes from './modules/applications/routes';
 import permissionRoutes from './modules/permissions/routes';
 import settingsRoutes from './modules/settings/routes';
-import dashboardRoutes from './modules/dashboard/routes'
-import otpRoutes from './modules/otp/routes'
+import dashboardRoutes from './modules/dashboard/routes';
+import otpRoutes from './modules/otp/routes';
+import studentRoutes from './modules/students/routes';
+import emailtemplateRoutes from './modules/email-templates/routes';
+import  dynamicformRoutes from  './modules/dynamic-form-manage/routes';
 import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
 
@@ -29,13 +32,16 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/institutions', institutionRoutes);
-app.use('/api/form-manager', formManagerRoutes)
+app.use('/api/form-manager', formManagerRoutes);
 app.use('/api/application', applicationRoutes);
 app.use('/api/login-histories', loginHistoryRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/otp', otpRoutes);
+app.use('/api/student', studentRoutes);
+app.use('/api/dynamic-form-manage', dynamicformRoutes);
+app.use('/api/email-templates', emailtemplateRoutes);
 
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
 

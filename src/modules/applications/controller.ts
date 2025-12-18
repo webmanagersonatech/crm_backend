@@ -3,7 +3,9 @@ import Application from './model'
 import { createApplicationSchema } from './application.sanitize'
 import { AuthRequest } from '../../middlewares/auth'
 import FormManager from '../form-manage/model'
+import Student from '../students/model'
 import LeadModel from '../lead/model'
+import crypto from "crypto";
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -12,6 +14,13 @@ const defaultClient = SibApiV3Sdk.ApiClient.instance;
 defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
+
+export const generatePassword = (length = 10): string => {
+  return crypto.randomBytes(length)
+    .toString("base64")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, length);
+};
 
 export const sendmail = async (req: Request, res: Response) => {
   try {
@@ -59,6 +68,30 @@ export const sendmail = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const sendPasswordEmail = async (
+  email: string,
+  name: string,
+  password: string
+) => {
+  const htmlContent = `
+    <h3>Welcome ${name}</h3>
+    <p>Your student account has been created.</p>
+    <p><strong>Email:</strong> ${email}</p>
+    <p><strong>Password:</strong> ${password}</p>
+    <p>Please change your password after login.</p>
+  `;
+
+  await emailApi.sendTransacEmail({
+    sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+    to: [{ email, name }],
+    subject: "Student Account Created",
+    htmlContent,
+  });
+};
+
+
+
 
 export const listpendingApplications = async (req: AuthRequest, res: Response) => {
   try {
@@ -115,6 +148,11 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
 export const createApplication = async (req: AuthRequest, res: Response) => {
   try {
     // ✅ Parse text data (may come as JSON strings in multipart)
+
+    const personalData =
+      typeof req.body.personalData === "string"
+        ? JSON.parse(req.body.personalData)
+        : req.body.personalData || {};
     let bodyData: any = {};
     if (typeof req.body.personalData === "string") {
       bodyData.personalData = JSON.parse(req.body.personalData);
@@ -127,7 +165,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     } else {
       bodyData.educationData = req.body.educationData || {};
     }
-    console.log(req.body.program, "req.body.program")
+
     const instituteId = req.body.instituteId || req.user?.instituteId;
     const program = req.body.program
     const academicYear = req.body.academicYear;
@@ -150,6 +188,8 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
     if (!createdBy)
       return res.status(401).json({ success: false, message: "Not authorized" });
+
+
 
     // ✅ Verify institute has a form configuration
     const formConfig = await FormManager.findOne({ instituteId });
@@ -178,6 +218,37 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const email = personalData["Email Address"];
+    const firstname = personalData["Full Name"];
+    const mobileNo = personalData["Contact Number"];
+
+    if (!email || !firstname || !mobileNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Required student fields missing",
+      });
+    }
+
+    let student = await Student.findOne({ email });
+    let plainPassword: string | null = null;
+
+
+    if (!student) {
+      plainPassword = generatePassword();
+
+      student = await Student.create({
+        firstname,
+        lastname: "",
+        email,
+        mobileNo,
+        instituteId,
+        password: plainPassword,
+        status: "active",
+      });
+
+      await sendPasswordEmail(email, firstname, plainPassword);
+    }
+
 
     const applicationData: any = {
       instituteId,
@@ -188,6 +259,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       educationData: bodyData.educationData,
       applicantName: bodyData.personalData["Full Name"],
       courseCode: bodyData.courseCode,
+      studentId: student.studentId,
       paymentStatus: bodyData.paymentStatus || "Unpaid",
       status: "Pending",
     };
@@ -199,6 +271,10 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
 
     const application = await Application.create(applicationData);
+
+    await Student.findByIdAndUpdate(student._id, {
+      applicationId: application.applicationId,
+    });
 
     if (leadId) {
       await LeadModel.findOneAndUpdate(
