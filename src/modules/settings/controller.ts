@@ -49,7 +49,7 @@ export const upsertSettings = async (req: Request, res: Response) => {
 
 export const getSettingsBystudent = async (req: StudentAuthRequest, res: Response) => {
   try {
-    const { instituteId } = req.student;
+    const { instituteId } = req.params;
 
     const settings = await Settings.findOne({ instituteId });
     if (!settings) {
