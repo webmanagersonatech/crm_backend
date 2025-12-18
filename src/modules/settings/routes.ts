@@ -4,13 +4,16 @@ import {
   getSettingsByInstitute,
   getAllSettings,
   deleteSettings,
+  getSettingsBystudent,
 } from './controller';
 import { protect } from '../../middlewares/auth';
+import { studentProtect } from '../../middlewares/studentAuth';
 
 const router = Router();
 
 router.post('/', protect, upsertSettings);
 
+router.get('/student', studentProtect, getSettingsBystudent);
 
 router.get('/:instituteId', protect, getSettingsByInstitute);
 
