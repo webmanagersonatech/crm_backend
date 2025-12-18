@@ -7,7 +7,7 @@ export const dynamicFieldSchema = Joi.object({
   label: Joi.string().trim().required(),
 
   type: Joi.string()
-    .valid("text", "number", "email", "select", "radio", "checkbox", "date")
+    .valid("text", "number", "email", "select", "radio", "checkbox", "date","file")
     .required(),
 
   required: Joi.boolean().default(false),

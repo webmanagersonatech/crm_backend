@@ -326,8 +326,15 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     }
 
     const email = personalData["Email Address"];
-    const firstname = personalData["Full Name"];
     const mobileNo = personalData["Contact Number"];
+
+    const firstname =
+      personalData["Full Name"] ||
+      [personalData["First Name"], personalData["Last Name"]]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
 
     if (!email || !firstname || !mobileNo) {
       return res.status(400).json({
@@ -356,6 +363,12 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       await sendPasswordEmail(email, firstname, plainPassword);
     }
 
+    const applicantName =
+      bodyData.personalData["Full Name"] ||
+      [bodyData.personalData["First Name"], bodyData.personalData["Last Name"]]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
     const applicationData: any = {
       instituteId,
@@ -364,7 +377,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       academicYear,
       personalData: bodyData.personalData,
       educationData: bodyData.educationData,
-      applicantName: bodyData.personalData["Full Name"],
+      applicantName,
       courseCode: bodyData.courseCode,
       studentId: student.studentId,
       paymentStatus: bodyData.paymentStatus || "Unpaid",

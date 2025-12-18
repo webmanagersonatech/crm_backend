@@ -6,7 +6,7 @@ import mongoosePaginate from "mongoose-paginate-v2";
 ================================ */
 export interface IFormField {
   label: string;
-  type: "text" | "number" | "email" | "select" | "radio" | "checkbox" | "date";
+  type: "text" | "number" | "email" | "select" | "radio" | "checkbox" | "date" | "file";
   required: boolean;
   options?: string[];
 }
@@ -36,7 +36,7 @@ const FieldSchema = new Schema<IFormField>(
     label: { type: String, required: true, trim: true },
     type: {
       type: String,
-      enum: ["text", "number", "email", "select", "radio", "checkbox", "date"],
+      enum: ["text", "number", "email", "select", "radio", "checkbox", "date", "file"],
       required: true
     },
     required: { type: Boolean, default: false },

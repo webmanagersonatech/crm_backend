@@ -7,7 +7,7 @@ import {
   getSettingsBystudent,
 } from './controller';
 import { protect } from '../../middlewares/auth';
-import { studentProtect } from '../../middlewares/studentAuth';
+
 
 const router = Router();
 
