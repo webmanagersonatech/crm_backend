@@ -362,7 +362,6 @@ export const changePassword = async (req: any, res: Response) => {
 
     // ---------- Find User ----------
     const userId = req.user?.id;
-    console.log(req.user, "klkl")
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const user = await User.findById(userId);

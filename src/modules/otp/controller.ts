@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Otp from "./model"
 import User from "../auth/auth.model";
+import Student from "../students/model";
 import { otpSchema } from "./otp.sanitize";
 
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -12,7 +13,6 @@ const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 export const createOtp = async (req: Request, res: Response) => {
   try {
-    
     const { error } = otpSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
@@ -38,6 +38,56 @@ export const createOtp = async (req: Request, res: Response) => {
         <div style="font-family: Arial, sans-serif; padding: 20px;">
           <h2>OTP Verification</h2>
           <p>Hello <b>${user.firstname || "User"}</b>,</p>
+          <p>Your One-Time Password (OTP) for verification is:</p>
+          <h1 style="color:#2563eb; letter-spacing:4px;">${otp}</h1>
+          <p>This code is valid for <strong>10 minutes</strong>.</p>
+          <p>If you didn’t request this, please ignore this message.</p>
+          <hr />
+          <p style="font-size: 12px; color: #555;">Sona Institute — Secure Verification</p>
+        </div>
+      `,
+    };
+
+    await emailApi.sendTransacEmail(emailData);
+
+    return res.status(201).json({
+      success: true,
+      message: "OTP sent successfully to registered email",
+      data: { email, expiresAt },
+    });
+  } catch (err: any) {
+    console.error("Error creating OTP:", err.response?.body || err.message || err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const createOtpstudent = async (req: Request, res: Response) => {
+  try {
+    const { error } = otpSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ message: error.details[0].message });
+    }
+    const { email } = req.body;
+    const student = await Student.findOne({ email });
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await Otp.deleteMany({ email, verified: false });
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await Otp.create({ email, otp, expiresAt });
+
+    const emailData = {
+      sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+      to: [{ email, name: student.firstname || "User" }],
+      subject: "Your OTP Code",
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>OTP Verification</h2>
+          <p>Hello <b>${student.firstname || "User"}</b>,</p>
           <p>Your One-Time Password (OTP) for verification is:</p>
           <h1 style="color:#2563eb; letter-spacing:4px;">${otp}</h1>
           <p>This code is valid for <strong>10 minutes</strong>.</p>

@@ -5,12 +5,16 @@ import {
     getStudent,
     getAllStudents,
     updateStudent,
-    studentLogin
+    studentLogin,
+    changePasswordwithotpverfiedstudent,
+    changePassword
 } from "./controller";
 
 const router = express.Router();
 router.post("/", createStudent);
+router.post("/changePassword", studentProtect, changePassword);
 router.post("/login", studentLogin);
+router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
 router.get("/", getAllStudents);
 router.get("/:id", getStudent);
 router.get("/studentindiual/:id", studentProtect, getStudent);

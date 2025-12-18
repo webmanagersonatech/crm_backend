@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { settingsSchema } from './settings.sanitize';
 import { StudentAuthRequest } from '../../middlewares/studentAuth';
+import Institution from '../institutions/model';
 import Settings from './model';
 // Create or update settings for an institute
 export const upsertSettings = async (req: Request, res: Response) => {
@@ -49,19 +50,28 @@ export const upsertSettings = async (req: Request, res: Response) => {
 export const getSettingsBystudent = async (req: StudentAuthRequest, res: Response) => {
   try {
     const { instituteId } = req.student;
+
     const settings = await Settings.findOne({ instituteId });
     if (!settings) {
       return res.status(404).json({ message: 'Settings not found' });
     }
+
+    const institute = await Institution.findOne({ instituteId });
+
     res.status(200).json({
       success: true,
-      data: settings,
+      data: {
+        courses: settings.courses,
+        instituteName: institute ? institute.name : null, 
+        logo: settings.logo,
+      },
     });
   } catch (error) {
     console.error('Error fetching settings:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 // Get settings by institute ID
 export const getSettingsByInstitute = async (req: Request, res: Response) => {
