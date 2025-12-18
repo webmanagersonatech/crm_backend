@@ -7,14 +7,17 @@ import {
     deleteApplication,
     updatePaymentStatus,
     listpendingApplications,
-    sendmail
+    sendmail,
+    createApplicationbystudent
 } from './controller'
 import { protect } from '../../middlewares/auth'
+import { studentProtect } from "../../middlewares/studentAuth";
 import { upload } from "./multerConfig";
 
 const router = Router()
 
 router.post("/", protect, upload.any(), createApplication);
+router.post("/student", studentProtect, upload.any(), createApplicationbystudent);
 router.get('/', protect, listApplications)
 
 router.get("/pending-applications", protect, listpendingApplications);

@@ -48,6 +48,12 @@ export const studentSchema = Joi.object({
     .messages({
       "string.empty": "Institute ID is required",
     }),
+  country: Joi.string()
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "Country is required",
+    }),
 
   state: Joi.string()
     .trim()

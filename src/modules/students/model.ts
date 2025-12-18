@@ -8,6 +8,7 @@ export interface IStudent extends Document {
   firstname: string;
   lastname: string;
   email: string;
+  country?: string;
   applicationId?: string;
   password: string;
   mobileNo: string;
@@ -28,6 +29,7 @@ const StudentSchema = new Schema<IStudent>(
     password: { type: String, required: true },
     mobileNo: { type: String, required: true, unique: true },
     instituteId: { type: String, required: true },
+    country: { type: String,  },
     state: { type: String,  },
     city: { type: String, },
     status: { type: String, enum: ["active", "inactive"], default: "inactive" },

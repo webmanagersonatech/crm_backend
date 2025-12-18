@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import FormManager from './model' // <-- your FormManager model file
 import { AuthRequest } from '../../middlewares/auth' // adjust path as needed
 import { createFormManagerSchema } from './form.sanitize'
+import { StudentAuthRequest } from '../../middlewares/studentAuth'
 
 /**
  * @desc Create or update form configuration for an institute
@@ -99,6 +100,32 @@ export const listFormManagers = async (req: AuthRequest, res: Response) => {
   }
 }
 
+export const getstudentFormManagerByInstituteId = async (req: StudentAuthRequest, res: Response) => {
+  try {
+    const user = req.student
+    if (!user) return res.status(401).json({ success: false, message: 'Not authorized' })
+    const { instituteId } = user
+    if (!instituteId) {
+      return res.status(400).json({ success: false, message: 'Institute ID is required' })
+    }
+    const form = await FormManager.findOne({ instituteId })
+    if (!form) {
+      return res.status(404).json({ success: false, message: 'Form configuration not found' })
+    }
+    return res.status(200).json({
+      success: true,
+      data: form
+    })
+  } catch (error: any) {
+    console.error('Error fetching form configuration by instituteId:', error)
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while fetching form configuration',
+      error: error.message
+    })
+  }
+}
+
 export const getFormManagerByInstituteId = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user
@@ -110,7 +137,7 @@ export const getFormManagerByInstituteId = async (req: AuthRequest, res: Respons
       return res.status(400).json({ success: false, message: 'Institute ID is required' })
     }
 
-  
+
     if (user.role !== 'superadmin' && user.instituteId !== instituteId) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }

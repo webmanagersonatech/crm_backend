@@ -41,6 +41,7 @@ const sendPasswordEmail = async (email: string, firstname: string, password: str
 export const createStudent = async (req: Request, res: Response) => {
   try {
     const { error, value } = studentSchema.validate(req.body);
+    
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
     }

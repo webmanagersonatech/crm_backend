@@ -6,6 +6,7 @@ import FormManager from '../form-manage/model'
 import Student from '../students/model'
 import LeadModel from '../lead/model'
 import crypto from "crypto";
+import { StudentAuthRequest } from '../../middlewares/studentAuth'
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -145,9 +146,115 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const createApplicationbystudent = async (req: StudentAuthRequest, res: Response) => {
+  try {
+
+
+    let bodyData: any = {};
+    if (typeof req.body.personalData === "string") {
+      bodyData.personalData = JSON.parse(req.body.personalData);
+    } else {
+      bodyData.personalData = req.body.personalData || {};
+    }
+
+    if (typeof req.body.educationData === "string") {
+      bodyData.educationData = JSON.parse(req.body.educationData);
+    } else {
+      bodyData.educationData = req.body.educationData || {};
+    }
+
+    const instituteId = req.body.instituteId || req.student?.instituteId;
+    const program = req.body.program
+    const academicYear = req.body.academicYear;
+
+    // ✅ Joi validation
+    const { error } = createApplicationSchema.validate({
+      instituteId,
+      program,
+      academicYear,
+      personalData: bodyData.personalData,
+      educationData: bodyData.educationData,
+    });
+
+    if (error)
+      return res.status(400).json({ success: false, message: error.message });
+
+    const createdBy = req.student?.id;
+
+    if (!createdBy)
+      return res.status(401).json({ success: false, message: "Not authorized" });
+
+
+
+    // ✅ Verify institute has a form configuration
+    const formConfig = await FormManager.findOne({ instituteId });
+    if (!formConfig) {
+      return res.status(404).json({
+        success: false,
+        message: "Form configuration not found for this institute",
+      });
+    }
+
+    // ✅ Handle uploaded files and attach filenames to respective fields
+    const files = req.files as Express.Multer.File[];
+
+    if (files && files.length > 0) {
+      files.forEach((file) => {
+        const fieldName = file.fieldname;
+
+        // Attach uploaded file name to personalData or educationData
+        if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
+          bodyData.personalData[fieldName] = file.filename;
+        } else if (
+          formConfig.educationFields.some((f: any) => f.fieldName === fieldName)
+        ) {
+          bodyData.educationData[fieldName] = file.filename;
+        }
+      });
+    }
+
+
+    const applicationData: any = {
+      instituteId,
+      program,
+      userId: createdBy,
+      academicYear,
+      personalData: bodyData.personalData,
+      educationData: bodyData.educationData,
+      applicantName: bodyData.personalData["Full Name"],
+      courseCode: bodyData.courseCode,
+      studentId: req.student.studentId,
+      paymentStatus: bodyData.paymentStatus || "Unpaid",
+      status: "Pending",
+    };
+
+
+    let application = await Application.findOneAndUpdate(
+      { studentId: req.student.studentId },
+      { $set: applicationData },
+      { new: true, upsert: true }
+    );
+
+    await Student.findByIdAndUpdate(req.student._id, {
+      applicationId: application.applicationId,
+    });
+
+
+    res.status(200).json({
+      success: true,
+      message: "Application Saved successfully",
+      data: application,
+    });
+  } catch (error: any) {
+    console.error("❌ Error creating application:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
 export const createApplication = async (req: AuthRequest, res: Response) => {
   try {
-    // ✅ Parse text data (may come as JSON strings in multipart)
 
     const personalData =
       typeof req.body.personalData === "string"
