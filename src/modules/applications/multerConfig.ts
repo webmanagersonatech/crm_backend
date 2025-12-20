@@ -2,46 +2,37 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-// ✅ Ensure uploads directory exists
+// Ensure uploads directory
 const uploadPath = path.join(__dirname, "../../../uploads");
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
 
-// ✅ Configure Multer storage
+// Storage
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
+  destination: (req, file, cb) => cb(null, uploadPath),
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+    // Remove spaces and non-alphanumeric characters from fieldname and original name
+    const safeFieldName = file.fieldname.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-_]/g, "");
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${safeFieldName}-${uniqueSuffix}${ext}`);
   },
 });
 
-// ✅ Allowed extensions and MIME types
-const allowedExtensions = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"];
+// Allowed types
+const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx"];
 const allowedMimeTypes = [
   "image/jpeg",
   "image/png",
+  "image/webp",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
-// ✅ File filter
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  const isAllowedExt = allowedExtensions.includes(ext);
-  const isAllowedMime = allowedMimeTypes.includes(file.mimetype);
-
-  if (isAllowedExt || isAllowedMime) cb(null, true);
+  if (allowedExtensions.includes(ext) || allowedMimeTypes.includes(file.mimetype)) cb(null, true);
   else cb(new Error("Invalid file type. Only images and documents are allowed."));
 };
 
-export const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
-  fileFilter,
-});
+export const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter });

@@ -9,40 +9,53 @@ import { StudentAuthRequest } from '../../middlewares/studentAuth'
  * @route POST /api/form-manager
  * @access Admin / Superadmin
  */
-export const createOrUpdateFormManager = async (req: AuthRequest, res: Response) => {
+export const createOrUpdateFormManager = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
     const user = req.user
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Not authorized' })
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized'
+      })
     }
 
-    // ✅ Validate input
-    const { error, value } = createFormManagerSchema.validate(req.body, { allowUnknown: true })
+    // ✅ Validate
+    const { error, value } = createFormManagerSchema.validate(req.body)
     if (error) {
-      return res.status(400).json({ success: false, message: error.message })
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      })
     }
 
-    const { instituteId, personalFields, educationFields } = value
+    const {
+      instituteId,
+      personalDetails,
+      educationDetails
+    } = value
 
     if (!instituteId) {
-      return res.status(400).json({ success: false, message: 'Institute ID is required' })
+      return res.status(400).json({
+        success: false,
+        message: 'Institute ID is required'
+      })
     }
 
-    // ✅ Check if a record already exists for this institute
     const existingForm = await FormManager.findOne({ instituteId })
 
     let form
     if (existingForm) {
-
-      existingForm.personalFields = personalFields
-      existingForm.educationFields = educationFields
+      existingForm.personalDetails = personalDetails
+      existingForm.educationDetails = educationDetails
       form = await existingForm.save()
     } else {
-
       form = await FormManager.create({
         instituteId,
-        personalFields,
-        educationFields
+        personalDetails,
+        educationDetails
       })
     }
 
@@ -54,14 +67,14 @@ export const createOrUpdateFormManager = async (req: AuthRequest, res: Response)
       data: form
     })
   } catch (error: any) {
-    console.error('Error saving form configuration:', error)
+    console.error('Form manager error:', error)
     return res.status(500).json({
       success: false,
-      message: 'Server error while saving form configuration',
-      error: error.message
+      message: 'Server error while saving form configuration'
     })
   }
 }
+
 
 /**
  * @desc Get form configuration (per institute)
@@ -126,38 +139,63 @@ export const getstudentFormManagerByInstituteId = async (req: StudentAuthRequest
   }
 }
 
-export const getFormManagerByInstituteId = async (req: AuthRequest, res: Response) => {
+export const getFormManagerByInstituteId = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
     const user = req.user
-    if (!user) return res.status(401).json({ success: false, message: 'Not authorized' })
+
+    /* 🔐 AUTH CHECK */
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized access'
+      })
+    }
 
     const { instituteId } = req.params
 
+    /* 🏫 PARAM VALIDATION */
     if (!instituteId) {
-      return res.status(400).json({ success: false, message: 'Institute ID is required' })
+      return res.status(400).json({
+        success: false,
+        message: 'Institute ID is required'
+      })
     }
 
-
+    /* 🛡 ROLE & ACCESS CHECK */
     if (user.role !== 'superadmin' && user.instituteId !== instituteId) {
-      return res.status(403).json({ success: false, message: 'Access denied' })
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      })
     }
 
+    /* 📄 FETCH FORM CONFIG */
     const form = await FormManager.findOne({ instituteId })
 
     if (!form) {
-      return res.status(404).json({ success: false, message: 'Form configuration not found' })
+      return res.status(404).json({
+        success: false,
+        message: 'Form configuration not found'
+      })
     }
 
+    /* ✅ SUCCESS RESPONSE */
     return res.status(200).json({
       success: true,
+      message: 'Form configuration fetched successfully',
       data: form
     })
-  } catch (error: any) {
-    console.error('Error fetching form configuration by instituteId:', error)
+
+  } catch (error) {
+    console.error('Error fetching form configuration:', error)
+
+    /* ❌ SERVER ERROR */
     return res.status(500).json({
       success: false,
-      message: 'Server error while fetching form configuration',
-      error: error.message
+      message: 'Internal server error'
     })
   }
 }

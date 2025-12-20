@@ -16,12 +16,12 @@ defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 
-export const generatePassword = (length = 10): string => {
-  return crypto.randomBytes(length)
+export const generatePassword = (length = 10) =>
+  crypto
+    .randomBytes(length)
     .toString("base64")
     .replace(/[^a-zA-Z0-9]/g, "")
     .slice(0, length);
-};
 
 export const sendmail = async (req: Request, res: Response) => {
   try {
@@ -94,6 +94,261 @@ export const sendPasswordEmail = async (
 
 
 
+
+
+export const createApplication = async (req: AuthRequest, res: Response) => {
+  try {
+    const instituteId = req.body.instituteId || req.user?.instituteId;
+    const program = req.body.program;
+    const academicYear = req.body.academicYear;
+    const leadId = req.body.leadId;
+
+    // Parse JSON fields (sent via multipart/form-data)
+    const personalDetails =
+      typeof req.body.personalDetails === "string"
+        ? JSON.parse(req.body.personalDetails)
+        : req.body.personalDetails || [];
+    const educationDetails =
+      typeof req.body.educationDetails === "string"
+        ? JSON.parse(req.body.educationDetails)
+        : req.body.educationDetails || [];
+
+    // Validate
+    const { error } = createApplicationSchema.validate({
+      instituteId,
+      program,
+      academicYear,
+      personalDetails,
+      educationDetails,
+    });
+    if (error)
+      return res.status(400).json({ success: false, message: error.message });
+
+    const createdBy = req.user?.id;
+    if (!createdBy)
+      return res.status(401).json({ success: false, message: "Not authorized" });
+
+    // Handle file uploads
+    const files = req.files as Express.Multer.File[] | undefined;
+ 
+
+    if (files?.length) {
+      files.forEach((file) => {
+        const fieldName = file.fieldname;
+
+        // Replace in personalDetails
+        personalDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename;
+          }
+        });
+
+        // Replace in educationDetails
+        educationDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename;
+          }
+        });
+      });
+    }
+
+    // Extract main student info for applicantName
+    const flattenedPersonalFields = Object.assign(
+      {},
+      ...personalDetails.map((s: any) => s.fields)
+    );
+
+
+    const email = flattenedPersonalFields["Email Address"];
+    const mobileNo = flattenedPersonalFields["Contact Number"];
+    const firstname =
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    if (!email || !firstname || !mobileNo)
+      return res
+        .status(400)
+        .json({ success: false, message: "Required student fields missing" });
+
+    // Check or create student
+    let student = await Student.findOne({ email });
+    let plainPassword: string | null = null;
+    if (!student) {
+      plainPassword = generatePassword();
+      student = await Student.create({
+        firstname,
+        lastname: flattenedPersonalFields["Last Name"] || "",
+        email,
+        mobileNo,
+        instituteId,
+        password: plainPassword,
+        status: "active",
+      });
+      await sendPasswordEmail(email, firstname, plainPassword);
+    }
+
+    const applicantName =
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+    // Create application (store **arrays** directly!)
+    const application = await Application.create({
+      instituteId,
+      program,
+      userId: createdBy,
+      leadId,
+      academicYear,
+      personalDetails,   // store array, not flattened object
+      educationDetails,  // store array, not flattened object
+      applicantName,
+      studentId: student.studentId,
+      paymentStatus: "Unpaid",
+      status: "Pending",
+    });
+
+    // Link student and lead
+    await Student.findByIdAndUpdate(student._id, {
+      applicationId: application.applicationId,
+    });
+    if (leadId)
+      await LeadModel.findOneAndUpdate(
+        { leadId },
+        { applicationId: application._id },
+        { new: true }
+      );
+
+    return res.status(200).json({
+      success: true,
+      message: "Application submitted successfully",
+      data: application,
+    });
+  } catch (error: any) {
+    console.error("Error creating application:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: error.message });
+  }
+};
+
+
+
+// export const createApplicationbystudent = async (req: StudentAuthRequest, res: Response) => {
+//   try {
+
+
+//     let bodyData: any = {};
+//     if (typeof req.body.personalData === "string") {
+//       bodyData.personalData = JSON.parse(req.body.personalData);
+//     } else {
+//       bodyData.personalData = req.body.personalData || {};
+//     }
+
+//     if (typeof req.body.educationData === "string") {
+//       bodyData.educationData = JSON.parse(req.body.educationData);
+//     } else {
+//       bodyData.educationData = req.body.educationData || {};
+//     }
+
+//     const instituteId = req.body.instituteId || req.student?.instituteId;
+//     const program = req.body.program
+//     const academicYear = req.body.academicYear;
+
+//     // ✅ Joi validation
+//     const { error } = createApplicationSchema.validate({
+//       instituteId,
+//       program,
+//       academicYear,
+//       personalData: bodyData.personalData,
+//       educationData: bodyData.educationData,
+//     });
+
+//     if (error)
+//       return res.status(400).json({ success: false, message: error.message });
+
+//     const createdBy = req.student?.id;
+
+//     if (!createdBy)
+//       return res.status(401).json({ success: false, message: "Not authorized" });
+
+
+
+//     // ✅ Verify institute has a form configuration
+//     const formConfig = await FormManager.findOne({ instituteId });
+//     if (!formConfig) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Form configuration not found for this institute",
+//       });
+//     }
+
+//     // ✅ Handle uploaded files and attach filenames to respective fields
+//     const files = req.files as Express.Multer.File[];
+
+//     if (files && files.length > 0) {
+//       files.forEach((file) => {
+//         const fieldName = file.fieldname;
+
+//         // Attach uploaded file name to personalData or educationData
+//         if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
+//           bodyData.personalData[fieldName] = file.filename;
+//         } else if (
+//           formConfig.educationFields.some((f: any) => f.fieldName === fieldName)
+//         ) {
+//           bodyData.educationData[fieldName] = file.filename;
+//         }
+//       });
+//     }
+
+
+//     const applicationData: any = {
+//       instituteId,
+//       program,
+//       userId: createdBy,
+//       academicYear,
+//       personalData: bodyData.personalData,
+//       educationData: bodyData.educationData,
+//       applicantName: bodyData.personalData["Full Name"],
+//       courseCode: bodyData.courseCode,
+//       studentId: req.student.studentId,
+//       paymentStatus: bodyData.paymentStatus || "Unpaid",
+//       status: "Pending",
+//     };
+
+
+//     let application = await Application.findOneAndUpdate(
+//       { studentId: req.student.studentId },
+//       { $set: applicationData },
+//       { new: true, upsert: true }
+//     );
+
+//     await Student.findByIdAndUpdate(req.student._id, {
+//       applicationId: application.applicationId,
+//     });
+
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Application Saved successfully",
+//       data: application,
+//     });
+//   } catch (error: any) {
+//     console.error("❌ Error creating application:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+
 export const listpendingApplications = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
@@ -147,276 +402,189 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
   }
 };
 
-export const createApplicationbystudent = async (req: StudentAuthRequest, res: Response) => {
+
+export const updateApplication = async (req: AuthRequest, res: Response) => {
   try {
+    const user = req.user
+    if (!user)
+      return res.status(401).json({ success: false, message: "Not authorized" })
 
+    const { id } = req.params
+    const application = await Application.findById(id)
 
-    let bodyData: any = {};
-    if (typeof req.body.personalData === "string") {
-      bodyData.personalData = JSON.parse(req.body.personalData);
-    } else {
-      bodyData.personalData = req.body.personalData || {};
+    if (!application) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found" })
     }
 
-    if (typeof req.body.educationData === "string") {
-      bodyData.educationData = JSON.parse(req.body.educationData);
-    } else {
-      bodyData.educationData = req.body.educationData || {};
+    // 🔐 Optional role restriction
+    if (
+      user.role !== "superadmin" &&
+      user.role !== "admin" &&
+      (!application.userId || application.userId.toString() !== user.id)
+    ) {
+      return res.status(403).json({ success: false, message: "Access denied" })
     }
 
-    const instituteId = req.body.instituteId || req.student?.instituteId;
-    const program = req.body.program
-    const academicYear = req.body.academicYear;
 
-    // ✅ Joi validation
+    const instituteId = req.body.instituteId || application.instituteId
+    const program = req.body.program || application.program
+    const academicYear = req.body.academicYear || application.academicYear
+
+    // Parse JSON arrays
+    const personalDetails =
+      typeof req.body.personalDetails === "string"
+        ? JSON.parse(req.body.personalDetails)
+        : req.body.personalDetails || application.personalDetails
+
+    const educationDetails =
+      typeof req.body.educationDetails === "string"
+        ? JSON.parse(req.body.educationDetails)
+        : req.body.educationDetails || application.educationDetails
+
+    // ✅ Validate
     const { error } = createApplicationSchema.validate({
       instituteId,
       program,
       academicYear,
-      personalData: bodyData.personalData,
-      educationData: bodyData.educationData,
-    });
+      personalDetails,
+      educationDetails,
+    })
 
     if (error)
-      return res.status(400).json({ success: false, message: error.message });
+      return res.status(400).json({ success: false, message: error.message })
 
-    const createdBy = req.student?.id;
+    // 📎 Handle file uploads
+    const files = req.files as Express.Multer.File[] | undefined
 
-    if (!createdBy)
-      return res.status(401).json({ success: false, message: "Not authorized" });
-
-
-
-    // ✅ Verify institute has a form configuration
-    const formConfig = await FormManager.findOne({ instituteId });
-    if (!formConfig) {
-      return res.status(404).json({
-        success: false,
-        message: "Form configuration not found for this institute",
-      });
-    }
-
-    // ✅ Handle uploaded files and attach filenames to respective fields
-    const files = req.files as Express.Multer.File[];
-
-    if (files && files.length > 0) {
+    if (files?.length) {
       files.forEach((file) => {
-        const fieldName = file.fieldname;
+        const fieldName = file.fieldname
 
-        // Attach uploaded file name to personalData or educationData
-        if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
-          bodyData.personalData[fieldName] = file.filename;
-        } else if (
-          formConfig.educationFields.some((f: any) => f.fieldName === fieldName)
-        ) {
-          bodyData.educationData[fieldName] = file.filename;
-        }
-      });
+        personalDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename
+          }
+        })
+
+        educationDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename
+          }
+        })
+      })
     }
 
-
-    const applicationData: any = {
-      instituteId,
-      program,
-      userId: createdBy,
-      academicYear,
-      personalData: bodyData.personalData,
-      educationData: bodyData.educationData,
-      applicantName: bodyData.personalData["Full Name"],
-      courseCode: bodyData.courseCode,
-      studentId: req.student.studentId,
-      paymentStatus: bodyData.paymentStatus || "Unpaid",
-      status: "Pending",
-    };
-
-
-    let application = await Application.findOneAndUpdate(
-      { studentId: req.student.studentId },
-      { $set: applicationData },
-      { new: true, upsert: true }
-    );
-
-    await Student.findByIdAndUpdate(req.student._id, {
-      applicationId: application.applicationId,
-    });
-
-
-    res.status(200).json({
-      success: true,
-      message: "Application Saved successfully",
-      data: application,
-    });
-  } catch (error: any) {
-    console.error("❌ Error creating application:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-
-export const createApplication = async (req: AuthRequest, res: Response) => {
-  try {
-
-    const personalData =
-      typeof req.body.personalData === "string"
-        ? JSON.parse(req.body.personalData)
-        : req.body.personalData || {};
-    let bodyData: any = {};
-    if (typeof req.body.personalData === "string") {
-      bodyData.personalData = JSON.parse(req.body.personalData);
-    } else {
-      bodyData.personalData = req.body.personalData || {};
-    }
-
-    if (typeof req.body.educationData === "string") {
-      bodyData.educationData = JSON.parse(req.body.educationData);
-    } else {
-      bodyData.educationData = req.body.educationData || {};
-    }
-
-    const instituteId = req.body.instituteId || req.user?.instituteId;
-    const program = req.body.program
-    const academicYear = req.body.academicYear;
-    const leadId = req.body.leadId;
-
-
-    // ✅ Joi validation
-    const { error } = createApplicationSchema.validate({
-      instituteId,
-      program,
-      academicYear,
-      personalData: bodyData.personalData,
-      educationData: bodyData.educationData,
-    });
-
-    if (error)
-      return res.status(400).json({ success: false, message: error.message });
-
-    const createdBy = req.user?.id;
-
-    if (!createdBy)
-      return res.status(401).json({ success: false, message: "Not authorized" });
-
-
-
-    // ✅ Verify institute has a form configuration
-    const formConfig = await FormManager.findOne({ instituteId });
-    if (!formConfig) {
-      return res.status(404).json({
-        success: false,
-        message: "Form configuration not found for this institute",
-      });
-    }
-
-    // ✅ Handle uploaded files and attach filenames to respective fields
-    const files = req.files as Express.Multer.File[];
-
-    if (files && files.length > 0) {
-      files.forEach((file) => {
-        const fieldName = file.fieldname;
-
-        // Attach uploaded file name to personalData or educationData
-        if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
-          bodyData.personalData[fieldName] = file.filename;
-        } else if (
-          formConfig.educationFields.some((f: any) => f.fieldName === fieldName)
-        ) {
-          bodyData.educationData[fieldName] = file.filename;
-        }
-      });
-    }
-
-    const email = personalData["Email Address"];
-    const mobileNo = personalData["Contact Number"];
-
-    const firstname =
-      personalData["Full Name"] ||
-      [personalData["First Name"], personalData["Last Name"]]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-
-    if (!email || !firstname || !mobileNo) {
-      return res.status(400).json({
-        success: false,
-        message: "Required student fields missing",
-      });
-    }
-
-    let student = await Student.findOne({ email });
-    let plainPassword: string | null = null;
-
-
-    if (!student) {
-      plainPassword = generatePassword();
-
-      student = await Student.create({
-        firstname,
-        lastname: "",
-        email,
-        mobileNo,
-        instituteId,
-        password: plainPassword,
-        status: "active",
-      });
-
-      await sendPasswordEmail(email, firstname, plainPassword);
-    }
+    // 🧠 Extract applicant name again
+    const flattenedPersonalFields = Object.assign(
+      {},
+      ...personalDetails.map((s: any) => s.fields)
+    )
 
     const applicantName =
-      bodyData.personalData["Full Name"] ||
-      [bodyData.personalData["First Name"], bodyData.personalData["Last Name"]]
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
         .filter(Boolean)
         .join(" ")
-        .trim();
 
-    const applicationData: any = {
-      instituteId,
-      program,
-      userId: createdBy,
-      academicYear,
-      personalData: bodyData.personalData,
-      educationData: bodyData.educationData,
-      applicantName,
-      courseCode: bodyData.courseCode,
-      studentId: student.studentId,
-      paymentStatus: bodyData.paymentStatus || "Unpaid",
-      status: "Pending",
-    };
+    // ✅ Update document
+    application.instituteId = instituteId
+    application.program = program
+    application.academicYear = academicYear
+    application.personalDetails = personalDetails
+    application.educationDetails = educationDetails
+    application.applicantName = applicantName || application.applicantName
 
+    await application.save()
 
-    if (leadId) {
-      applicationData.leadId = leadId;
-    }
-
-
-    const application = await Application.create(applicationData);
-
-    await Student.findByIdAndUpdate(student._id, {
-      applicationId: application.applicationId,
-    });
-
-    if (leadId) {
-      await LeadModel.findOneAndUpdate(
-        { leadId },
-        {
-          applicationId: application._id,
-        },
-        { new: true }
-      );
-    }
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Application submitted successfully",
+      message: "Application updated successfully",
       data: application,
-    });
+    })
   } catch (error: any) {
-    console.error("❌ Error creating application:", error);
+    console.error("❌ Error updating application:", error)
+    return res
+      .status(500)
+      .json({ success: false, message: error.message })
+  }
+}
+
+// 🔍 Get Single Application
+export const getApplication = async (req: Request, res: Response) => {
+  try {
+    const application = await Application.findById(req.params.id).populate('userId', 'firstname lastname role instituteId');
+
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
+
+    res.status(200).json({ success: true, data: application });
+  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// ✏️ Update Application (admin/superadmin only)
+
+export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user)
+      return res.status(401).json({ success: false, message: "Not authorized" });
+
+    const { id } = req.params;
+    const { paymentStatus } = req.body;
+
+    if (!paymentStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment status is required",
+      });
+    }
+
+    // ✅ Optional: restrict valid statuses
+    const validStatuses = ["Paid", "Unpaid", "Partially"];
+    if (!validStatuses.includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment status. Must be one of: ${validStatuses.join(
+          ", "
+        )}`,
+      });
+    }
+
+    // ✅ Find and update the application
+    const updatedApplication = await Application.findByIdAndUpdate(
+      id,
+      { paymentStatus },
+      { new: true }
+    )
+
+    if (!updatedApplication) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Payment status updated to "${paymentStatus}"`,
+      data: updatedApplication,
+    });
+  } catch (error: any) {
+    console.error("❌ Error updating payment status:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update payment status",
+    });
+  }
+};
 
 export const listApplications = async (req: AuthRequest, res: Response) => {
   try {
@@ -497,179 +665,6 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message })
   }
 }
-
-// 🔍 Get Single Application
-export const getApplication = async (req: Request, res: Response) => {
-  try {
-    const application = await Application.findById(req.params.id).populate('userId', 'firstname lastname role instituteId');
-
-    if (!application) {
-      return res.status(404).json({ success: false, message: 'Application not found' });
-    }
-
-    res.status(200).json({ success: true, data: application });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ✏️ Update Application (admin/superadmin only)
-export const updateApplication = async (req: AuthRequest, res: Response) => {
-  try {
-    const user = req.user;
-    if (!user) return res.status(401).json({ message: "Not authorized" });
-
-    const application = await Application.findById(req.params.id);
-    if (!application) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Application not found" });
-    }
-
-
-
-    // Parse personal & education data (may come as JSON string)
-    const bodyData: any = {};
-    bodyData.personalData =
-      typeof req.body.personalData === "string"
-        ? JSON.parse(req.body.personalData)
-        : req.body.personalData || {};
-
-    bodyData.educationData =
-      typeof req.body.educationData === "string"
-        ? JSON.parse(req.body.educationData)
-        : req.body.educationData || {};
-
-    const instituteId = req.body.instituteId || application.instituteId;
-    const academicYear = req.body.academicYear || application.academicYear;
-    const program = req.body.program
-
-    // ✅ Validate base fields
-    const { error } = createApplicationSchema.validate({
-      instituteId,
-      program,
-      academicYear,
-      personalData: bodyData.personalData,
-      educationData: bodyData.educationData,
-    });
-
-    if (error)
-      return res.status(400).json({ success: false, message: error.message });
-
-    // ✅ Ensure form configuration exists
-    const formConfig = await FormManager.findOne({ instituteId });
-    if (!formConfig) {
-      return res.status(404).json({
-        success: false,
-        message: "Form configuration not found for this institute",
-      });
-    }
-
-    // ✅ Handle uploaded files
-    const files = req.files as Express.Multer.File[];
-    if (files && files.length > 0) {
-      files.forEach((file) => {
-        const fieldName = file.fieldname;
-
-        if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
-          bodyData.personalData[fieldName] = file.filename;
-        } else if (formConfig.educationFields.some((f: any) => f.fieldName === fieldName)) {
-          bodyData.educationData[fieldName] = file.filename;
-        }
-      });
-    }
-
-    // ✅ Safely update application fields
-    application.personalData = {
-      ...application.personalData,
-      ...bodyData.personalData,
-    };
-
-    application.educationData = {
-      ...application.educationData,
-      ...bodyData.educationData,
-    };
-
-    application.academicYear = academicYear;
-    application.instituteId = instituteId;
-    application.program = program;
-
-    // ✅ Update new fields (added recently)
-    application.applicantName =
-      bodyData.personalData["Full Name"] ||
-      bodyData.personalData.fullname ||
-      application.applicantName;
-
-    application.courseCode = req.body.courseCode || application.courseCode;
-
-    application.paymentStatus =
-      req.body.paymentStatus || application.paymentStatus || "Unpaid";
-
-    await application.save();
-    await application.populate("userId");
-
-    return res.status(200).json({ success: true, data: application });
-  } catch (error: any) {
-    console.error("❌ Error updating application:", error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
-  try {
-    const user = req.user;
-    if (!user)
-      return res.status(401).json({ success: false, message: "Not authorized" });
-
-    const { id } = req.params;
-    const { paymentStatus } = req.body;
-
-    if (!paymentStatus) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment status is required",
-      });
-    }
-
-    // ✅ Optional: restrict valid statuses
-    const validStatuses = ["Paid", "Unpaid", "Partially"];
-    if (!validStatuses.includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid payment status. Must be one of: ${validStatuses.join(
-          ", "
-        )}`,
-      });
-    }
-
-    // ✅ Find and update the application
-    const updatedApplication = await Application.findByIdAndUpdate(
-      id,
-      { paymentStatus },
-      { new: true }
-    )
-
-    if (!updatedApplication) {
-      return res.status(404).json({
-        success: false,
-        message: "Application not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `Payment status updated to "${paymentStatus}"`,
-      data: updatedApplication,
-    });
-  } catch (error: any) {
-    console.error("❌ Error updating payment status:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to update payment status",
-    });
-  }
-};
-
-
 
 // 🗑️ Delete Application (admin/superadmin only)
 export const deleteApplication = async (req: AuthRequest, res: Response) => {

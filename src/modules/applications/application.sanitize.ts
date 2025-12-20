@@ -1,4 +1,4 @@
-import Joi from 'joi'
+import Joi from 'joi';
 
 export const createApplicationSchema = Joi.object({
   instituteId: Joi.string().required().messages({
@@ -12,17 +12,13 @@ export const createApplicationSchema = Joi.object({
   academicYear: Joi.string().required().messages({
     'any.required': 'Academic year is required'
   }),
-
-  personalData: Joi.object().required().messages({
-    'object.base': 'Personal data must be an object',
-    'any.required': 'Personal data is required'
+  personalDetails: Joi.array().min(1).required().messages({
+    'array.base': 'Personal details must be an array',
+    'any.required': 'Personal details are required'
   }),
-
-  educationData: Joi.object().optional().messages({
-    'object.base': 'Education data must be an object'
+  educationDetails: Joi.array().optional().messages({
+    'array.base': 'Education details must be an array'
   }),
-
   status: Joi.string().valid('Pending', 'Approved', 'Rejected').optional(),
-
   submittedAt: Joi.date().optional()
-})
+});

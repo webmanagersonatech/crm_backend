@@ -2,6 +2,9 @@ import mongoose, { Document, Schema } from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
 import crypto from "crypto";
 
+// ========================
+// Application Interface
+// ========================
 export interface IApplication extends Document {
   applicationId: string;
   instituteId: string;
@@ -10,10 +13,10 @@ export interface IApplication extends Document {
   userId?: string;
   leadId?: string;
   academicYear: string;
-  personalData: Record<string, any>;
-  educationData: Record<string, any>;
+  personalDetails: Array<{ sectionName: string; fields: Record<string, any> }>;
+  educationDetails: Array<{ sectionName: string; fields: Record<string, any> }>;
   applicantName: string;
-  courseCode: string;
+  courseCode?: string;
   paymentStatus: "Paid" | "Unpaid" | "Partially";
   status: "Pending" | "Approved" | "Rejected";
   submittedAt: Date;
@@ -21,19 +24,30 @@ export interface IApplication extends Document {
   updatedAt?: Date;
 }
 
+// ========================
+// Schema
+// ========================
+const SectionSchema = new Schema(
+  {
+    sectionName: { type: String, required: true },
+    fields: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false } // no separate _id for sections
+);
+
 const ApplicationSchema = new Schema<IApplication>(
   {
     applicationId: { type: String, unique: true, index: true },
     instituteId: { type: String, required: true },
-    studentId: { type: String, },
+    studentId: { type: String },
     program: { type: String, required: true },
     userId: { type: String },
     leadId: { type: String },
     academicYear: { type: String, required: true },
-    personalData: { type: Schema.Types.Mixed, default: {} },
-    educationData: { type: Schema.Types.Mixed, default: {} },
+    personalDetails: { type: [SectionSchema], default: [] },
+    educationDetails: { type: [SectionSchema], default: [] },
     applicantName: { type: String, required: true },
-    courseCode: { type: String, },
+    courseCode: { type: String },
     paymentStatus: {
       type: String,
       enum: ["Paid", "Unpaid", "Partially"],
@@ -53,7 +67,7 @@ const ApplicationSchema = new Schema<IApplication>(
   }
 );
 
-// Virtual: Populate institute info
+// Virtual populate: Institute info
 ApplicationSchema.virtual("institute", {
   ref: "Institution",
   localField: "instituteId",
@@ -61,16 +75,11 @@ ApplicationSchema.virtual("institute", {
   justOne: true,
 });
 
-/** 
- * 🔹 Pre-save hook to auto-generate unique applicationId
- * Format: <instituteId>-APP-<randomString>
- */
+// Pre-save: generate unique applicationId
 ApplicationSchema.pre<IApplication>("save", async function (next) {
   if (!this.applicationId) {
-    const randomStr = crypto.randomBytes(3).toString("hex").toUpperCase(); // e.g. 3FA9B2
+    const randomStr = crypto.randomBytes(3).toString("hex").toUpperCase();
     this.applicationId = `${this.instituteId}-APP-${randomStr}`;
-
-    // Ensure uniqueness (rare collisions)
     const existing = await mongoose.models.Application.findOne({
       applicationId: this.applicationId,
     });
@@ -84,12 +93,10 @@ ApplicationSchema.pre<IApplication>("save", async function (next) {
   next();
 });
 
-// Add pagination plugin
+// Pagination plugin
 ApplicationSchema.plugin(mongoosePaginate);
 
-// Export typed model
-export interface IApplicationModel
-  extends mongoose.PaginateModel<IApplication> { }
+export interface IApplicationModel extends mongoose.PaginateModel<IApplication> {}
 
 const Application = mongoose.model<IApplication, IApplicationModel>(
   "Application",
