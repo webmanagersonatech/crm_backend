@@ -7,6 +7,7 @@ import Student from '../students/model'
 import LeadModel from '../lead/model'
 import crypto from "crypto";
 import { StudentAuthRequest } from '../../middlewares/studentAuth'
+import Settings from '../settings/model'
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -130,7 +131,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
     // Handle file uploads
     const files = req.files as Express.Multer.File[] | undefined;
- 
+
 
     if (files?.length) {
       files.forEach((file) => {
@@ -522,7 +523,9 @@ export const getApplication = async (req: Request, res: Response) => {
     if (!application) {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
-
+    const settings = await Settings.findOne({ instituteId: application.instituteId });
+    const insiteimage = settings?.logo || null;
+    application.set('instituteLogo', insiteimage, { strict: false });
     res.status(200).json({ success: true, data: application });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
