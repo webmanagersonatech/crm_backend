@@ -35,4 +35,4 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
   else cb(new Error("Invalid file type. Only images and documents are allowed."));
 };
 
-export const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter });
+export const upload = multer({ storage, limits: { fileSize: 20  * 1024 * 1024 }, fileFilter });

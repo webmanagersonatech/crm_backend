@@ -17,9 +17,24 @@ export interface ILead extends Document {
   status?: string;
   communication?: string;
   followUpDate?: Date;
+  followups: {
+    status: string;
+    communication?: string;
+    followUpDate?: Date;
+    description?: string;
+  }[];
   description?: string;
   createdBy: mongoose.Types.ObjectId;
 }
+const FollowUpSchema = new Schema(
+  {
+    status: { type: String, required: true },
+    communication: { type: String },
+    followUpDate: { type: Date },
+    description: { type: String },
+  },
+  { timestamps: true }
+);
 
 const LeadSchema = new Schema<ILead>(
   {
@@ -29,11 +44,16 @@ const LeadSchema = new Schema<ILead>(
     candidateName: { type: String, required: true },
     ugDegree: { type: String },
     applicationId: { type: String },
-    phoneNumber: { type: String,required: true  },
+    phoneNumber: { type: String, required: true },
     dateOfBirth: { type: Date },
     country: { type: String },
     state: { type: String },
     city: { type: String },
+    followups: {
+      type: [FollowUpSchema],
+      default: [],
+    },
+
     status: { type: String, default: "New" },
     communication: { type: String },
     followUpDate: { type: Date },

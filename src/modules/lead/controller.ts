@@ -7,6 +7,8 @@ import { AuthRequest } from '../../middlewares/auth';
 
 export const createLead = async (req: AuthRequest, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
+
+
   if (error) return res.status(400).json({ message: error.message });
 
   const createdBy = req.user?.id;
@@ -24,8 +26,14 @@ export const createLead = async (req: AuthRequest, res: Response) => {
       message: `Lead with this phone number already exists, created by ${existingUserName || 'another user'}.`
     });
   }
+  const firstFollowUp = {
+    status: value.status,
+    communication: value.communication,
+    followUpDate: value.followUpDate,
+    description: value.description,
 
-  const lead = await Lead.create({ ...value, createdBy, instituteId });
+  };
+  const lead = await Lead.create({ ...value, createdBy, instituteId, followups: [firstFollowUp], });
   res.json(lead);
 };
 
@@ -118,16 +126,73 @@ export const getLead = async (req: Request, res: Response) => {
 
 export const updateLead = async (req: AuthRequest, res: Response) => {
   try {
-    const lead = await Lead.findById(req.params.id);
-    if (!lead) return res.status(404).json({ message: 'Not found' });
+    const { id } = req.params;
 
-    Object.assign(lead, req.body);
-    await lead.save();
-    res.json(lead);
+    const {
+      status,
+      communication,
+      followUpDate,
+      description,
+      followups,
+      ...rest
+    } = req.body;
+
+    const lead = await Lead.findById(id);
+    if (!lead) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+
+    // 🔹 Normalize date
+    const oldDate = lead.followUpDate
+      ? new Date(lead.followUpDate).toISOString().split('T')[0]
+      : '';
+
+    const newDate = followUpDate
+      ? new Date(followUpDate).toISOString().split('T')[0]
+      : '';
+
+    const isFollowUpChanged =
+      status !== lead.status ||
+      communication !== lead.communication ||
+      description !== lead.description ||
+      newDate !== oldDate;
+
+    // ✅ Build update safely
+    const updateQuery: any = {
+      $set: {
+        ...(status !== undefined && { status }),
+        ...(communication !== undefined && { communication }),
+        ...(followUpDate !== undefined && { followUpDate }),
+        ...(description !== undefined && { description }),
+        ...rest, // ✅ now safe (NO followups here)
+      },
+    };
+
+    // ➕ Push followup separately
+    if (isFollowUpChanged) {
+      updateQuery.$push = {
+        followups: {
+          status,
+          communication,
+          followUpDate,
+          description,
+        },
+      };
+    }
+
+    const updatedLead = await Lead.findByIdAndUpdate(
+      id,
+      updateQuery,
+      { new: true }
+    );
+
+    res.json(updatedLead);
+
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
 };
+
 
 
 

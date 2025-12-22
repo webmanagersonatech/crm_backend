@@ -7,7 +7,7 @@ import {
     deleteApplication,
     updatePaymentStatus,
     listpendingApplications,
-    sendmail,
+    sendTemplateMails,
     // createApplicationbystudent
 } from './controller'
 import { protect } from '../../middlewares/auth'
@@ -26,6 +26,6 @@ router.get('/:id', protect, getApplication)
 router.put("/:id", protect, upload.any(), updateApplication);
 router.patch("/:id/payment-status", protect, updatePaymentStatus);
 router.delete('/:id', protect, deleteApplication)
-router.post("/send-mail", protect, sendmail);
+router.post("/send-mail", protect, sendTemplateMails);
 
 export default router

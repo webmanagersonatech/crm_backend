@@ -8,6 +8,7 @@ import LeadModel from '../lead/model'
 import crypto from "crypto";
 import { StudentAuthRequest } from '../../middlewares/studentAuth'
 import Settings from '../settings/model'
+import emailtemplates from '../email-templates/model';
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -24,52 +25,55 @@ export const generatePassword = (length = 10) =>
     .replace(/[^a-zA-Z0-9]/g, "")
     .slice(0, length);
 
-export const sendmail = async (req: Request, res: Response) => {
+export const sendTemplateMails = async (req: Request, res: Response) => {
   try {
-    const { toEmail, toName, subject, htmlContent } = req.body;
+    const { templateId, recipients } = req.body;
 
-    if (!toEmail || !subject || !htmlContent) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields: toEmail, subject, htmlContent",
-      });
+    if (!templateId || !recipients || !recipients.length) {
+      return res.status(400).json({ success: false, message: "Missing templateId or recipients" });
     }
 
-    const emailData = {
-      sender: { email: "vinor1213@gmail.com", name: "vinoth" },
-      to: [{ email: toEmail, name: toName || "" }],
-      subject,
-      htmlContent,
-    };
+    // Fetch template from DB
+    const template = await emailtemplates.findById(templateId);
+    if (!template) {
+      return res.status(404).json({ success: false, message: "Template not found" });
+    }
 
-    const response = await emailApi.sendTransacEmail(emailData);
+    const results = [];
 
-    console.log("Email sent successfully:", {
-      to: toEmail,
-      name: toName,
-      subject,
-      messageId: response.messageId,
-    });
+    // Loop through recipients
+    for (const recipient of recipients) {
+      const htmlContent = template.description
+        .replace(/candidatename/g, recipient.name)
+        .replace(
+          /<a href="(.*?)"(.*?)>(.*?)<\/a>/g,
+          `<a href="$1"$2 style="color: blue;">$3</a>`
+        );
 
-    return res.status(200).json({
-      success: true,
-      message: "Email sent successfully",
-      data: {
-        to: toEmail,
-        name: toName,
-        subject,
-        messageId: response.messageId,
-      },
-    });
+
+      const emailData = {
+        sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+        to: [{ email: recipient.email, name: recipient.name }],
+        subject: template.title,
+        htmlContent,
+      };
+
+      try {
+        const response = await emailApi.sendTransacEmail(emailData);
+        results.push({ email: recipient.email, success: true, messageId: response.messageId });
+      } catch (err: any) {
+        results.push({ email: recipient.email, success: false, error: err.message });
+      }
+    }
+
+    return res.status(200).json({ success: true, results });
   } catch (err: any) {
-    console.error("Failed to send email:", err.response?.body || err.message || err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to send email",
-      error: err.message,
-    });
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Failed to send emails", error: err.message });
   }
 };
+
+
 
 export const sendPasswordEmail = async (
   email: string,
