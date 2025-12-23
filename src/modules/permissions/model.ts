@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IPermission extends Document {
   instituteId: string;
+  userId: mongoose.Types.ObjectId;
   role: "admin" | "user";
   permissions: {
     moduleName: string;
@@ -17,6 +18,7 @@ export interface IPermission extends Document {
 const PermissionSchema = new Schema<IPermission>(
   {
     instituteId: { type: String, required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     role: { type: String, required: true, enum: ["admin", "user"] },
     permissions: [
       {
@@ -37,8 +39,7 @@ const PermissionSchema = new Schema<IPermission>(
   }
 );
 
-// ✅ Each institute has only one permission set per role
-PermissionSchema.index({ instituteId: 1, role: 1 }, { unique: true });
+
 
 const Permission =
   mongoose.models.Permission ||

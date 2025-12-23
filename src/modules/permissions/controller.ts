@@ -23,10 +23,10 @@ export const createOrUpdatePermission = async (req: AuthRequest, res: Response) 
       });
     }
 
-    const { instituteId, role, permissions } = value;
+    const { instituteId, userId, permissions } = value;
 
     // ✅ Check if a permission record already exists for this institute + role
-    const existing = await Permission.findOne({ instituteId, role });
+    const existing = await Permission.findOne({ instituteId, userId });
 
     let permissionDoc;
     if (existing) {
@@ -36,7 +36,7 @@ export const createOrUpdatePermission = async (req: AuthRequest, res: Response) 
     } else {
       permissionDoc = await Permission.create({
         instituteId,
-        role,
+        userId,
         permissions,
       });
     }
@@ -67,16 +67,25 @@ export const getPermissions = async (req: AuthRequest, res: Response) => {
     }
 
     if (user.role !== "superadmin") {
-      return res.status(403).json({ success: false, message: "Access denied. Superadmin only." });
+      return res
+        .status(403)
+        .json({ success: false, message: "Access denied. Superadmin only." });
     }
 
-    const { instituteId, role } = req.query;
-    const filter: any = {};
+    const { instituteId, userId } = req.query;
 
-    if (instituteId) filter.instituteId = instituteId;
-    if (role) filter.role = role;
+    // ✅ REQUIRED VALIDATION
+    if (!instituteId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "instituteId and userId are required",
+      });
+    }
 
-    const permissions = await Permission.find(filter).sort({ createdAt: -1 });
+    const permissions = await Permission.find({
+      instituteId,
+      userId,
+    }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -87,6 +96,7 @@ export const getPermissions = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 
 export const getPermissionsforusers = async (req: AuthRequest, res: Response) => {
@@ -96,13 +106,28 @@ export const getPermissionsforusers = async (req: AuthRequest, res: Response) =>
       return res.status(401).json({ success: false, message: "Not authorized" });
     }
 
-    const { instituteId, role } = req.query;
-    const filter: any = {};
+    const { instituteId, userId } = req.query;
 
-    if (instituteId) filter.instituteId = instituteId;
-    if (role) filter.role = role;
+    // ✅ REQUIRED VALIDATION
+    if (!instituteId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "instituteId and userId are required",
+      });
+    }
 
-    const permissions = await Permission.findOne(filter).sort({ createdAt: -1 });
+    // ✅ APPLY FILTER PROPERLY
+    const permissions = await Permission.findOne({
+      instituteId,
+      userId,
+    });
+
+    if (!permissions) {
+      return res.status(404).json({
+        success: false,
+        message: "Permissions not found",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -113,6 +138,7 @@ export const getPermissionsforusers = async (req: AuthRequest, res: Response) =>
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 export const deletePermission = async (req: AuthRequest, res: Response) => {
   try {

@@ -7,6 +7,7 @@ import Joi from 'joi';
 import { RegisterDTO } from './auth.types';
 import CryptoJS from "crypto-js";
 import bcrypt from "bcryptjs";
+import Permission from '../permissions/model';
 
 dotenv.config();
 const SECRET_KEY = "sonacassecretkey@2025";
@@ -31,25 +32,66 @@ export const register = async (req: Request, res: Response) => {
       email: Joi.string().email().required(),
       userType: Joi.string().optional(),
       password: Joi.string().min(6).required(),
+
       mobileNo: Joi.string()
         .pattern(/^[0-9]{10,15}$/)
         .required()
         .messages({
-          'string.pattern.base': 'Mobile number must contain only digits (10–15 characters).',
+          'string.pattern.base':
+            'Mobile number must contain only digits (10–15 characters).',
         }),
+
       designation: Joi.string().required(),
       role: Joi.string().valid('superadmin', 'admin', 'user').default('user'),
       instituteId: Joi.string().required(),
       status: Joi.string().valid('active', 'inactive').default('inactive'),
+
+      // ✅ Accept permissions
+      permissions: Joi.array()
+        .items(
+          Joi.object({
+            moduleName: Joi.string().required().messages({
+              "any.required": "Module name is required",
+            }),
+            view: Joi.boolean().default(false),
+            create: Joi.boolean().default(false),
+            edit: Joi.boolean().default(false),
+            delete: Joi.boolean().default(false),
+            filter: Joi.boolean().default(false),
+            download: Joi.boolean().default(false),
+          })
+        )
+        .optional(),
     });
 
     const { error, value } = schema.validate(req.body);
     if (error) return res.status(400).json({ message: error.message });
 
     const existing = await User.findOne({ email: value.email });
-    if (existing) return res.status(400).json({ message: 'Email already exists' });
+    if (existing)
+      return res.status(400).json({ message: 'Email already exists' });
+    const existingUsername = await User.findOne({ username: value.username });
+    if (existingUsername)
+      return res.status(400).json({ message: 'Username already exists' });
 
-    const user = await User.create(value as RegisterDTO);
+    const existingphone = await User.findOne({ mobileNo: value.mobileNo });
+    if (existingphone)
+      return res.status(400).json({ message: 'Mobile number already exists' });
+
+    // ✅ REMOVE permissions before saving user
+    const { permissions, ...userData } = value;
+
+    const user = await User.create(userData as RegisterDTO);
+
+    // ✅ Save permissions separately
+    if (permissions && permissions.length > 0) {
+      await Permission.create({
+        userId: user._id,
+        instituteId: value.instituteId,
+        role: value.role,
+        permissions,
+      });
+    }
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -64,6 +106,7 @@ export const register = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 
 export const login = async (req: Request, res: Response) => {
@@ -248,6 +291,7 @@ export const listallUsers = async (req: AuthRequest, res: Response) => {
 
       // Superadmin can view all (except superadmin)
       query.role = { $ne: "superadmin" };
+      query.status = "active";
     } else if (userRole === "admin") {
       query.instituteId = req.user.instituteId;
       query.role = "user";

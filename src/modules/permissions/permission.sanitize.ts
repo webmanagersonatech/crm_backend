@@ -5,14 +5,11 @@ export const createOrUpdatePermissionSchema = Joi.object({
     "any.required": "Institute ID is required",
   }),
 
-  role: Joi.string()
-    .valid("admin", "user")
-    .required()
-    .messages({
-      "any.only": "Role must be either Admin or User",
-      "any.required": "Role is required",
-    }),
 
+  userId: Joi.string().required().messages({
+    "any.required": "User ID is required",
+  }),
+  
   permissions: Joi.array()
     .items(
       Joi.object({
