@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface IPermission extends Document {
   instituteId: string;
   userId: mongoose.Types.ObjectId;
-  role: "admin" | "user";
+  role?: string;
   permissions: {
     moduleName: string;
     view: boolean;
@@ -19,7 +19,7 @@ const PermissionSchema = new Schema<IPermission>(
   {
     instituteId: { type: String, required: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    role: { type: String, required: true, enum: ["admin", "user"] },
+    role: { type: String, },
     permissions: [
       {
         moduleName: { type: String, required: true },

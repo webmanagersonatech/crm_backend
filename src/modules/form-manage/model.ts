@@ -9,6 +9,7 @@ export interface ISectionField {
   label?: string
   type: string
   required?: boolean
+  maxLength?: number
   options?: string[]
   multiple?: boolean
 }
@@ -20,6 +21,7 @@ const SectionFieldSchema = new Schema<ISectionField>(
     type: { type: String, required: true },
     required: { type: Boolean, default: false },
     options: [{ type: String }],
+    maxLength: { type: Number },
     multiple: { type: Boolean, default: false }
   },
   { _id: false }
