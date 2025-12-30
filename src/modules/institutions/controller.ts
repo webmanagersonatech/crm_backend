@@ -73,6 +73,37 @@ export const getInstitution = async (req: Request, res: Response) => {
     res.status(500).json({ message: err.message });
   }
 };
+export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
+  try {
+    const { instituteId } = req.params;
+
+    if (!instituteId) {
+      return res.status(400).json({ message: 'Institute ID is required' });
+    }
+
+    // Validate institute exists and is active
+    const institution = await Institution.findOne({ instituteId, status: 'active' });
+    if (!institution) {
+      return res.status(404).json({ message: 'Invalid or inactive institute' });
+    }
+
+    // Set cookie
+    res.cookie('instituteId', instituteId, {
+      httpOnly: true, // hidden from JS
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'lax', // avoids CSRF issues
+      maxAge: 1000 * 60 * 60, // 1 hour
+    });
+
+    // Redirect to student portal
+    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
+    res.redirect(portalURL);
+
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
 
 export const getActiveInstitutions = async (req: AuthRequest, res: Response) => {
   try {
@@ -87,6 +118,32 @@ export const getActiveInstitutions = async (req: AuthRequest, res: Response) => 
     return res
       .status(500)
       .json({ status: false, message: err.message || "Server error" });
+  }
+};
+export const getActiveInstitutionsbystudent = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const institutions = await Institution.find(
+      { status: "active" },
+      {
+        _id: 0,
+        name: 1,
+        instituteId: 1,
+      }
+    ).sort({ name: 1 });
+
+    return res.status(200).json({
+      success: true,
+      data: institutions,
+    });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
   }
 };
 

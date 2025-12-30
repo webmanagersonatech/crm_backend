@@ -10,6 +10,8 @@ export interface IApplication extends Document {
   instituteId: string;
   studentId: string;
   program: string;
+  createdBystudent?: boolean;
+  Applicationmode?: string;
   userId?: string;
   leadId?: string;
   academicYear: string;
@@ -19,6 +21,7 @@ export interface IApplication extends Document {
   courseCode?: string;
   paymentStatus: "Paid" | "Unpaid" | "Partially";
   status: "Pending" | "Approved" | "Rejected";
+  formStatus?: "Incomplete" | "Complete";
   submittedAt: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -32,7 +35,7 @@ const SectionSchema = new Schema(
     sectionName: { type: String, required: true },
     fields: { type: Schema.Types.Mixed, default: {} },
   },
-  { _id: false } // no separate _id for sections
+  { _id: false }
 );
 
 const ApplicationSchema = new Schema<IApplication>(
@@ -40,6 +43,8 @@ const ApplicationSchema = new Schema<IApplication>(
     applicationId: { type: String, unique: true, index: true },
     instituteId: { type: String, required: true },
     studentId: { type: String },
+    Applicationmode: { type: String, enum: ["online", "offline"], default: "offline" },
+    createdBystudent: { type: Boolean, default: false },
     program: { type: String, required: true },
     userId: { type: String },
     leadId: { type: String },
@@ -53,6 +58,12 @@ const ApplicationSchema = new Schema<IApplication>(
       enum: ["Paid", "Unpaid", "Partially"],
       default: "Unpaid",
     },
+    formStatus: {
+      type: String,
+      enum: ["Incomplete", "Complete"],
+      default: "Complete", // still safe
+    },
+
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],
@@ -92,11 +103,20 @@ ApplicationSchema.pre<IApplication>("save", async function (next) {
   }
   next();
 });
+ApplicationSchema.index({ applicationId: 1 });                  // search by ID
+ApplicationSchema.index({ applicantName: 1 });                 // search by name
+ApplicationSchema.index({ academicYear: 1 });                  // filter by academic year
+ApplicationSchema.index({ instituteId: 1 });                   // filter by institute
+ApplicationSchema.index({ paymentStatus: 1 });                 // filter unpaid/paid/partial
+ApplicationSchema.index({ formStatus: 1 });                    // filter incomplete/complete
+ApplicationSchema.index({ createdAt: -1 });                    // sorting by newest first
+ApplicationSchema.index({ instituteId: 1, paymentStatus: 1 }); // frequent filter combo
+ApplicationSchema.index({ instituteId: 1, formStatus: 1 });    // frequent filter combo
+ApplicationSchema.index({ academicYear: 1, instituteId: 1 });
 
-// Pagination plugin
 ApplicationSchema.plugin(mongoosePaginate);
 
-export interface IApplicationModel extends mongoose.PaginateModel<IApplication> {}
+export interface IApplicationModel extends mongoose.PaginateModel<IApplication> { }
 
 const Application = mongoose.model<IApplication, IApplicationModel>(
   "Application",

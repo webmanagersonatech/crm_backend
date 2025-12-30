@@ -26,12 +26,15 @@ export const createLead = async (req: AuthRequest, res: Response) => {
       message: `Lead with this phone number already exists, created by ${existingUserName || 'another user'}.`
     });
   }
+  const user = await User.findById(createdBy).lean();
+  const calltaken =
+    `${user?.firstname || ""} ${user?.lastname || ""}`.trim();
   const firstFollowUp = {
     status: value.status,
+    calltaken,
     communication: value.communication,
     followUpDate: value.followUpDate,
     description: value.description,
-
   };
   const lead = await Lead.create({ ...value, createdBy, instituteId, followups: [firstFollowUp], });
   res.json(lead);
@@ -170,11 +173,15 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
 
     // ➕ Push followup separately
     if (isFollowUpChanged) {
+      const user = await User.findById(req.user?.id).lean();
+      const calltaken =
+        `${user?.firstname || ""} ${user?.lastname || ""}`.trim();
       updateQuery.$push = {
         followups: {
           status,
           communication,
           followUpDate,
+          calltaken,
           description,
         },
       };

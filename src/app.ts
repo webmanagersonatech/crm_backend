@@ -14,9 +14,10 @@ import dashboardRoutes from './modules/dashboard/routes';
 import otpRoutes from './modules/otp/routes';
 import studentRoutes from './modules/students/routes';
 import emailtemplateRoutes from './modules/email-templates/routes';
-import  dynamicformRoutes from  './modules/dynamic-form-manage/routes';
+import dynamicformRoutes from './modules/dynamic-form-manage/routes';
 import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
@@ -24,8 +25,14 @@ const app = express();
 
 connectDB();
 
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:3001'], // frontend URLs
+    credentials: true, // ✅ allows cookies to be sent
+}));
+
+
 app.use(express.json());
+app.use(cookieParser());
 app.use(logger);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

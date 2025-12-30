@@ -22,6 +22,7 @@ export interface ILead extends Document {
     communication?: string;
     followUpDate?: Date;
     description?: string;
+    calltaken?: string;
   }[];
   description?: string;
   createdBy: mongoose.Types.ObjectId;
@@ -31,7 +32,9 @@ const FollowUpSchema = new Schema(
     status: { type: String, required: true },
     communication: { type: String },
     followUpDate: { type: Date },
+    calltaken: { type: String },
     description: { type: String },
+
   },
   { timestamps: true }
 );

@@ -6,18 +6,22 @@ import {
   updateInstitution,
   deleteInstitution,
   getActiveInstitutions,
-  getActiveData
-  
+  getActiveData,
+  getInstituteIdViaCookie,
+  getActiveInstitutionsbystudent
+
 } from './controller';
 import { protect } from '../../middlewares/auth';
 
 const router = Router();
 router.get('/active', protect, getActiveInstitutions);
+router.get('/active-institutions', getActiveInstitutionsbystudent);
+router.get('/apply/:instituteId', getInstituteIdViaCookie)
 router.get('/activedata', protect, getActiveData);
-router.get('/', protect, listInstitutions);      
-router.post('/', protect, createInstitution);      
-router.get('/:id', protect, getInstitution);       
-router.put('/:id', protect, updateInstitution);    
-router.delete('/:id', protect, deleteInstitution); 
+router.get('/', protect, listInstitutions);
+router.post('/', protect, createInstitution);
+router.get('/:id', protect, getInstitution);
+router.put('/:id', protect, updateInstitution);
+router.delete('/:id', protect, deleteInstitution);
 
 export default router;

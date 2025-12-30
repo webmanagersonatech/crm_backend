@@ -6,6 +6,8 @@ import jwt from "jsonwebtoken";
 import Joi from 'joi';
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import CryptoJS from "crypto-js";
+import Settings from "../settings/model";
+import FormManage from "../form-manage/model";
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -50,11 +52,16 @@ export const createStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { email, firstname } = value;
+    const { email, firstname, mobileNo } = value;
 
     const existing = await Student.findOne({ email });
     if (existing) {
       return res.status(400).json({ message: "Student already exists" });
+    }
+    // Check if mobile number already exists
+    const existingMobile = await Student.findOne({ mobileNo });
+    if (existingMobile) {
+      return res.status(400).json({ message: "Mobile number already exists" });
     }
 
     // ✅ Generate plain password ONLY
@@ -98,6 +105,13 @@ export const studentLogin = async (req: Request, res: Response) => {
       { expiresIn: "7d" }
     );
 
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // only HTTPS in production
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    });
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -106,7 +120,7 @@ export const studentLogin = async (req: Request, res: Response) => {
         firstname: student.firstname,
         lastname: student.lastname,
         email: student.email,
-        token,
+
       },
     });
   } catch (err) {
@@ -220,7 +234,51 @@ export const changePasswordwithotpverfiedstudent = async (req: any, res: Respons
     return res.status(500).json({ message: "Server error" });
   }
 };
+export const getLoggedInStudent = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const studentId = req.student?.id;
 
+    if (!studentId) {
+      return res.status(401).json({ success: false });
+    }
+
+    const student = await Student.findById(studentId).select(
+      "_id firstname lastname email instituteId status mobileNo applicationId"
+    );
+
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+
+    const settingsDoc = await Settings.findOne({
+      instituteId: student.instituteId,
+    }).select("-__v -logo");
+
+
+
+    const formManagerDoc = await FormManage.findOne({
+      instituteId: student.instituteId,
+    }).select("-__v");
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        student,
+        settings: settingsDoc || {},
+        formManager: formManagerDoc || {},
+      },
+    });
+  } catch (err) {
+    console.error("getLoggedInStudent error:", err);
+    return res.status(500).json({ success: false });
+  }
+};
 export const changePassword = async (req: StudentAuthRequest, res: Response) => {
   try {
     // ---------- Validation ----------
@@ -229,7 +287,7 @@ export const changePassword = async (req: StudentAuthRequest, res: Response) => 
       newPassword: Joi.string().min(6).required(),
       confirmPassword: Joi.string().required(),
     });
-    console.log(req.student, "req");
+
 
     const { error, value } = schema.validate(req.body);
     if (error) return res.status(400).json({ message: error.message });

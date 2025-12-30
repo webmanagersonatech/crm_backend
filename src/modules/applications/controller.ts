@@ -248,119 +248,289 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
 
 
-// export const createApplicationbystudent = async (req: StudentAuthRequest, res: Response) => {
-//   try {
+export const createApplicationByStudent = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    // Parse JSON fields
+    const personalDetails =
+      typeof req.body.personalDetails === "string"
+        ? JSON.parse(req.body.personalDetails)
+        : req.body.personalDetails || [];
 
+    const educationDetails =
+      typeof req.body.educationDetails === "string"
+        ? JSON.parse(req.body.educationDetails)
+        : req.body.educationDetails || [];
 
-//     let bodyData: any = {};
-//     if (typeof req.body.personalData === "string") {
-//       bodyData.personalData = JSON.parse(req.body.personalData);
-//     } else {
-//       bodyData.personalData = req.body.personalData || {};
-//     }
+    const instituteId = req.body.instituteId || req.student?.instituteId;
+    const program = req.body.program;
+    const academicYear = req.body.academicYear;
 
-//     if (typeof req.body.educationData === "string") {
-//       bodyData.educationData = JSON.parse(req.body.educationData);
-//     } else {
-//       bodyData.educationData = req.body.educationData || {};
-//     }
+    // Validate request
+    const { error } = createApplicationSchema.validate({
+      instituteId,
+      program,
+      academicYear,
+      personalDetails,
+      educationDetails,
+    });
 
-//     const instituteId = req.body.instituteId || req.student?.instituteId;
-//     const program = req.body.program
-//     const academicYear = req.body.academicYear;
+    if (error)
+      return res.status(400).json({ success: false, message: error.message });
 
-//     // ✅ Joi validation
-//     const { error } = createApplicationSchema.validate({
-//       instituteId,
-//       program,
-//       academicYear,
-//       personalData: bodyData.personalData,
-//       educationData: bodyData.educationData,
-//     });
+    const createdBy = req.student?.id;
+    const createdBystudent = true
+    const Applicationmode = "online"
+    if (!createdBy)
+      return res.status(401).json({ success: false, message: "Not authorized" });
 
-//     if (error)
-//       return res.status(400).json({ success: false, message: error.message });
+    // Handle uploaded files
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (files?.length) {
+      files.forEach((file) => {
+        const fieldName = file.fieldname;
 
-//     const createdBy = req.student?.id;
+        personalDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename;
+          }
+        });
 
-//     if (!createdBy)
-//       return res.status(401).json({ success: false, message: "Not authorized" });
+        educationDetails.forEach((section: any) => {
+          if (section.fields[fieldName] !== undefined) {
+            section.fields[fieldName] = file.filename;
+          }
+        });
+      });
+    }
 
+    const flattenedPersonalFields = Object.assign(
+      {},
+      ...personalDetails.map((s: any) => s.fields)
+    );
 
+    const email = flattenedPersonalFields["Email Address"];
+    const mobileNo = flattenedPersonalFields["Contact Number"];
+    const firstname =
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
-//     // ✅ Verify institute has a form configuration
-//     const formConfig = await FormManager.findOne({ instituteId });
-//     if (!formConfig) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Form configuration not found for this institute",
-//       });
-//     }
+    if (!email || !firstname || !mobileNo)
+      return res
+        .status(400)
+        .json({ success: false, message: "Required student fields missing" });
 
-//     // ✅ Handle uploaded files and attach filenames to respective fields
-//     const files = req.files as Express.Multer.File[];
+    const student = await Student.findOne({ email });
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+    const applicantName =
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
+        .filter(Boolean)
+        .join(" ");
 
-//     if (files && files.length > 0) {
-//       files.forEach((file) => {
-//         const fieldName = file.fieldname;
+    let application;
 
-//         // Attach uploaded file name to personalData or educationData
-//         if (formConfig.personalFields.some((f: any) => f.fieldName === fieldName)) {
-//           bodyData.personalData[fieldName] = file.filename;
-//         } else if (
-//           formConfig.educationFields.some((f: any) => f.fieldName === fieldName)
-//         ) {
-//           bodyData.educationData[fieldName] = file.filename;
-//         }
-//       });
-//     }
+    if (student.applicationId) {
 
+      const existingApplication = await Application.findOne({
+        applicationId: student.applicationId,
+      });
+      const hasPersonalDetails =
+        (Array.isArray(personalDetails) && personalDetails.length > 0) ||
+        (existingApplication?.personalDetails?.length ?? 0) > 0;
 
-//     const applicationData: any = {
-//       instituteId,
-//       program,
-//       userId: createdBy,
-//       academicYear,
-//       personalData: bodyData.personalData,
-//       educationData: bodyData.educationData,
-//       applicantName: bodyData.personalData["Full Name"],
-//       courseCode: bodyData.courseCode,
-//       studentId: req.student.studentId,
-//       paymentStatus: bodyData.paymentStatus || "Unpaid",
-//       status: "Pending",
-//     };
+      const hasEducationDetails =
+        (Array.isArray(educationDetails) && educationDetails.length > 0) ||
+        (existingApplication?.educationDetails?.length ?? 0) > 0;
 
+      const formStatus =
+        hasPersonalDetails && hasEducationDetails
+          ? "Complete"
+          : "Incomplete";
 
-//     let application = await Application.findOneAndUpdate(
-//       { studentId: req.student.studentId },
-//       { $set: applicationData },
-//       { new: true, upsert: true }
-//     );
+      application = await Application.findOneAndUpdate(
+        { applicationId: student.applicationId },
+        {
+          instituteId,
+          program,
+          createdBystudent,
+          Applicationmode,
+          academicYear,
+          personalDetails,
+          educationDetails,
+          applicantName,
+          studentId: student.studentId,
+          paymentStatus: "Unpaid",
+          status: "Pending",
+          formStatus,
+        },
+        { new: true }
+      );
+    } else {
+      // ✅ Create new application
+      application = await Application.create({
+        instituteId,
+        program,
+        createdBystudent,
+        Applicationmode,
+        academicYear,
+        personalDetails,
+        educationDetails,
+        applicantName,
+        studentId: student.studentId,
+        paymentStatus: "Unpaid",
+        status: "Pending",
+        formStatus: "Incomplete",
+      });
 
-//     await Student.findByIdAndUpdate(req.student._id, {
-//       applicationId: application.applicationId,
-//     });
+      // Link student to this new application
+      student.applicationId = application.applicationId;
+      await student.save();
+    }
 
+    res.status(200).json({
+      success: true,
+      message: "Application submitted successfully",
+      data: application,
+    });
+  } catch (error: any) {
+    console.error("Error creating student application:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
-//     res.status(200).json({
-//       success: true,
-//       message: "Application Saved successfully",
-//       data: application,
-//     });
-//   } catch (error: any) {
-//     console.error("❌ Error creating application:", error);
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// };
+export const getApplicationByStudent = async (req: StudentAuthRequest, res: Response) => {
+  try {
+    const { applicationId } = req.params;
+    const studentId = req.student?.id;
 
+    if (!studentId) {
+      return res.status(401).json({ success: false, message: "Not authorized" });
+    }
+
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    const application = await Application.findOne({
+      applicationId,
+      studentId: student.studentId,
+    })
+
+    if (!application) {
+      return res.status(404).json({ success: false, message: "Application not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: application,
+    });
+  } catch (error: any) {
+    console.error("Error fetching application:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getApplicationByStudents = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const authStudentId = req.student?.id;
+
+    if (!authStudentId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized access" });
+    }
+
+    const student = await Student.findById(authStudentId);
+
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+    // 🟡 No application yet → WARNING (not error)
+    if (!student.applicationId) {
+      return res.status(200).json({
+        success: true,
+        warning: true,
+        message: "No application found. Create a new application.",
+        data: null,
+      });
+    }
+
+    const application = await Application.findOne({
+      applicationId: student.applicationId,
+      studentId: student.studentId,
+    });
+
+    // 🟡 ApplicationId exists but record missing
+    if (!application) {
+      return res.status(200).json({
+        success: true,
+        warning: true,
+        message: "Application record not found. Please create a new one.",
+        data: null,
+      });
+    }
+
+    // ✅ Application found
+    return res.status(200).json({
+      success: true,
+      warning: false,
+      data: application,
+    });
+  } catch (error: any) {
+    console.error("Error fetching application by student:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 export const listpendingApplications = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
     if (!user) return res.status(401).json({ message: "Not authorized" });
 
-    let filter: any = { paymentStatus: "Unpaid" };
+    let filter: any = {};
 
+    // Dynamic status filtering
+    if (req.query.paymentStatus) {
+      filter.paymentStatus = req.query.paymentStatus;
+    }
+    if (req.query.formStatus) {
+      filter.formStatus = req.query.formStatus;
+    }
+
+    // If no specific status is selected, default to unpaid OR incomplete
+    if (!req.query.paymentStatus && !req.query.formStatus) {
+      filter.$or = [
+        { paymentStatus: "Unpaid" },
+        { formStatus: "Incomplete" },
+      ];
+    }
 
     if (user.role === "superadmin") {
 
@@ -613,6 +783,9 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     if (req.query.academicYear) filter.academicYear = req.query.academicYear
     if (req.query.instituteId) filter.instituteId = req.query.instituteId
     if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
+    if (req.query.formStatus) {
+      filter.formStatus = req.query.formStatus;
+    }
 
     if (req.query.applicationId) {
       filter.applicationId = { $regex: req.query.applicationId, $options: "i" };

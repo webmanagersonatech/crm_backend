@@ -62,7 +62,7 @@ export const getSettingsBystudent = async (req: StudentAuthRequest, res: Respons
       success: true,
       data: {
         courses: settings.courses,
-        instituteName: institute ? institute.name : null, 
+        instituteName: institute ? institute.name : null,
         logo: settings.logo,
       },
     });
