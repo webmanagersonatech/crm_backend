@@ -15,6 +15,7 @@ import otpRoutes from './modules/otp/routes';
 import studentRoutes from './modules/students/routes';
 import emailtemplateRoutes from './modules/email-templates/routes';
 import dynamicformRoutes from './modules/dynamic-form-manage/routes';
+import othersRoutes from './modules/others/routes'
 import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
@@ -44,6 +45,7 @@ app.use('/api/application', applicationRoutes);
 app.use('/api/login-histories', loginHistoryRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/others', othersRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/student', studentRoutes);
