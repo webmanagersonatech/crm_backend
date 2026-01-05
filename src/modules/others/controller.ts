@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import csv from 'csv-parse';
 import Other from './model';
-import User from '../auth/auth.model';
+import lead from '../lead/model'
 import { AuthRequest } from '../../middlewares/auth';
 import XLSX from 'xlsx';
+import User from '../auth/auth.model';
 
 
 // 🔹 Create single record
@@ -461,6 +462,82 @@ export const importOthers = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// 🔹 Create Lead from Other by recordId
+export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
+  try {
+    const { recordId } = req.params;
+    const createdBy = req.user!.id;
+
+    const other = await Other.findOne({ recordId }).lean();
+    if (!other) {
+      return res.status(404).json({ message: "Other record not found" });
+    }
+
+    // ❌ Prevent duplicate creation
+    if (other.leadId) {
+      return res.status(400).json({
+        message: "Lead already created from this record",
+      });
+    }
+
+    const existingLead = await lead.findOne({
+      phoneNumber: other.phone,
+      instituteId: other.instituteId,
+    });
+
+    if (existingLead) {
+      return res.status(400).json({
+        message: "Lead already exists for this phone number",
+      });
+    }
+
+    const user = await User.findById(createdBy).lean();
+    const calltaken =
+      `${user?.firstname ?? ""} ${user?.lastname ?? ""}`.trim() || "System";
+
+    const followUpDate = new Date();
+
+    const firstFollowUp = {
+      status: "New",
+      calltaken,
+      communication: "Phone",
+      followUpDate,
+      description: `Lead generated from Others module. Source: ${other.dataSource}.`,
+
+    };
+
+    const newLead = await lead.create({
+      instituteId: other.instituteId,
+      candidateName: other.name,
+      phoneNumber: other.phone,
+      dateOfBirth:  null,
+      program: "",
+      status: "New",
+      communication: "Phone",
+      followUpDate,
+      description: `Lead generated from Others module. Source: ${other.dataSource}.`,
+
+      followups: [firstFollowUp],
+      createdBy,
+    });
+
+    // ✅ IMPORTANT PART (what you asked)
+    await Other.findOneAndUpdate(
+      { recordId },
+      { $set: { leadId: newLead._id } }
+    );
+
+    return res.json({
+      message: "Lead created successfully",
+      lead: newLead,
+    });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+
 
 
 // 🔹 List with pagination & filters
@@ -481,7 +558,7 @@ export const listOthers = async (req: AuthRequest, res: Response) => {
     if (phone) filter.phone = { $regex: phone, $options: 'i' };
     if (dataSource) filter.dataSource = dataSource;
 
-  if (startDate || endDate) {
+    if (startDate || endDate) {
       const dateFilter: any = {};
       if (startDate) dateFilter.$gte = startDate;
       if (endDate) dateFilter.$lte = endDate;

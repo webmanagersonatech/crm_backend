@@ -3,7 +3,7 @@ import FormManager from './model' // <-- your FormManager model file
 import { AuthRequest } from '../../middlewares/auth' // adjust path as needed
 import { createFormManagerSchema } from './form.sanitize'
 import { StudentAuthRequest } from '../../middlewares/studentAuth'
-
+import Settings from "../settings/model";
 /**
  * @desc Create or update form configuration for an institute
  * @route POST /api/form-manager
@@ -176,6 +176,10 @@ export const getFormManagerByInstituteId = async (
     /* 📄 FETCH FORM CONFIG */
     const form = await FormManager.findOne({ instituteId })
 
+    const settingsDoc = await Settings.findOne({
+      instituteId
+    }).select("applicantAge");
+
     if (!form) {
       return res.status(404).json({
         success: false,
@@ -187,7 +191,9 @@ export const getFormManagerByInstituteId = async (
     return res.status(200).json({
       success: true,
       message: 'Form configuration fetched successfully',
-      data: form
+      data: form,
+      age: settingsDoc?.applicantAge ?? null
+
     })
 
   } catch (error) {

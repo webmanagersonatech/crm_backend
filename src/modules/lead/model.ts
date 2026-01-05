@@ -6,7 +6,8 @@ export interface ILead extends Document {
   leadId: string;
   instituteId: string;
   applicationId?: string;
-  program: string;
+  program?: string;
+  campaign?: string;
   candidateName: string;
   ugDegree?: string;
   phoneNumber?: string;
@@ -43,7 +44,8 @@ const LeadSchema = new Schema<ILead>(
   {
     leadId: { type: String, unique: true, index: true },
     instituteId: { type: String, required: true },
-    program: { type: String, required: true },
+    campaign: { type: String },
+    program: { type: String, },
     candidateName: { type: String, required: true },
     ugDegree: { type: String },
     applicationId: { type: String },

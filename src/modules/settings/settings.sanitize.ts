@@ -21,6 +21,28 @@ export const settingsSchema = Joi.object({
   merchantId: Joi.string().optional(),
   apiKey: Joi.string().optional(),
   authToken: Joi.string().optional(),
+  applicationFee: Joi.number()
+    .min(0)
+    .required()
+    .messages({
+      'number.base': 'Application fee must be a number',
+      'number.min': 'Application fee cannot be negative',
+      'any.required': 'Application fee is required',
+    }),
+
+  /* 🔹 NEW: Applicant Age */
+  applicantAge: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .required()
+    .messages({
+      'number.base': 'Applicant age must be a number',
+      'number.integer': 'Applicant age must be an integer',
+      'number.min': 'Applicant age must be at least 1',
+      'number.max': 'Applicant age cannot exceed 100',
+      'any.required': 'Applicant age is required',
+    }),
 
   contactEmail: Joi.string().email().optional().messages({
     'string.email': 'Contact email must be a valid email address',

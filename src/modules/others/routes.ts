@@ -5,7 +5,8 @@ import {
   listOthers,
   getOther,
   updateOther,
-  deleteOther
+  deleteOther,
+  createLeadFromOther
 } from './controller';
 import { protect } from '../../middlewares/auth';
 import multer from 'multer';
@@ -20,6 +21,9 @@ const upload = multer({ storage });
 router.get('/', protect, listOthers);
 router.post('/', protect, createOther);
 router.get('/:id', protect, getOther);
+// Create Lead from Other
+router.post('/create-lead/:recordId', protect, createLeadFromOther);
+
 router.put('/:id', protect, updateOther);
 router.delete('/:id', protect, deleteOther);
 

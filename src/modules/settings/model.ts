@@ -10,6 +10,8 @@ export interface ISettings extends Document {
   contactEmail?: string;
   contactNumber?: string;
   address?: string;
+  applicationFee: number;
+  applicantAge: number;
 }
 
 const SettingsSchema = new Schema<ISettings>(
@@ -18,6 +20,18 @@ const SettingsSchema = new Schema<ISettings>(
     logo: { type: String }, // Base64 encoded logo
     courses: [{ type: String }], // Multiple courses or course IDs
     merchantId: { type: String },
+    applicationFee: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    applicantAge: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 100,
+    },
     apiKey: { type: String },
     authToken: { type: String },
     contactEmail: { type: String },
