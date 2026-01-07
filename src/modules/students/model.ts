@@ -32,7 +32,7 @@ const StudentSchema = new Schema<IStudent>(
     country: { type: String, },
     state: { type: String, },
     city: { type: String, },
-    status: { type: String, enum: ["active", "inactive"], default: "inactive" },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true }
 );

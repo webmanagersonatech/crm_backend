@@ -45,6 +45,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
     for (const recipient of recipients) {
       const htmlContent = template.description
         .replace(/candidatename/g, recipient.name)
+        .replace(/{{applicationId}}/g, recipient.applicationId || "N/A") 
         .replace(
           /<a href="(.*?)"(.*?)>(.*?)<\/a>/g,
           `<a href="$1"$2 style="color: blue;">$3</a>`
@@ -72,8 +73,6 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: "Failed to send emails", error: err.message });
   }
 };
-
-
 
 export const sendPasswordEmail = async (
   email: string,
