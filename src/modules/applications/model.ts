@@ -7,11 +7,15 @@ import crypto from "crypto";
 // ========================
 export interface IApplication extends Document {
   applicationId: string;
+
   instituteId: string;
   studentId: string;
   program: string;
   createdBystudent?: boolean;
-  Applicationmode?: string;
+  applicationSource?: string;
+  country?: string;
+  state?: string;
+  city?: string;
   userId?: string;
   leadId?: string;
   academicYear: string;
@@ -22,6 +26,7 @@ export interface IApplication extends Document {
   paymentStatus: "Paid" | "Unpaid" | "Partially";
   status: "Pending" | "Approved" | "Rejected";
   formStatus?: "Incomplete" | "Complete";
+  interactions?: string;
   submittedAt: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -43,15 +48,27 @@ const ApplicationSchema = new Schema<IApplication>(
     applicationId: { type: String, unique: true, index: true },
     instituteId: { type: String, required: true },
     studentId: { type: String },
-    Applicationmode: { type: String, enum: ["online", "offline"], default: "offline" },
+    applicationSource: {
+      type: String,
+      enum: ["online", "offline", "lead"],
+      default: "offline",
+    },
+
     createdBystudent: { type: Boolean, default: false },
     program: { type: String, required: true },
+    interactions: {
+      type: String,
+      default: "New",
+    },
     userId: { type: String },
     leadId: { type: String },
     academicYear: { type: String, required: true },
     personalDetails: { type: [SectionSchema], default: [] },
     educationDetails: { type: [SectionSchema], default: [] },
     applicantName: { type: String, required: true },
+    country: { type: String, index: true },
+    state: { type: String, index: true },
+    city: { type: String, index: true },
     courseCode: { type: String },
     paymentStatus: {
       type: String,
@@ -86,6 +103,14 @@ ApplicationSchema.virtual("institute", {
   justOne: true,
 });
 
+ApplicationSchema.virtual("lead", {
+  ref: "Lead",
+  localField: "leadId",
+  foreignField: "leadId",
+  justOne: true,
+});
+
+
 // Pre-save: generate unique applicationId
 ApplicationSchema.pre<IApplication>("save", async function (next) {
   if (!this.applicationId) {
@@ -109,7 +134,12 @@ ApplicationSchema.index({ academicYear: 1 });                  // filter by acad
 ApplicationSchema.index({ instituteId: 1 });                   // filter by institute
 ApplicationSchema.index({ paymentStatus: 1 });                 // filter unpaid/paid/partial
 ApplicationSchema.index({ formStatus: 1 });                    // filter incomplete/complete
-ApplicationSchema.index({ createdAt: -1 });                    // sorting by newest first
+ApplicationSchema.index({ createdAt: -1 });
+ApplicationSchema.index({ country: 1, state: 1, city: 1 });
+ApplicationSchema.index({ instituteId: 1, country: 1 });
+ApplicationSchema.index({ instituteId: 1, state: 1 });
+ApplicationSchema.index({ instituteId: 1, city: 1 });
+// sorting by newest first
 ApplicationSchema.index({ instituteId: 1, paymentStatus: 1 }); // frequent filter combo
 ApplicationSchema.index({ instituteId: 1, formStatus: 1 });    // frequent filter combo
 ApplicationSchema.index({ academicYear: 1, instituteId: 1 });

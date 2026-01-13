@@ -11,6 +11,7 @@ export interface ISettings extends Document {
   contactNumber?: string;
   address?: string;
   applicationFee: number;
+  academicYear: string;
   applicantAge: number;
 }
 
@@ -37,6 +38,7 @@ const SettingsSchema = new Schema<ISettings>(
     contactEmail: { type: String },
     contactNumber: { type: String },
     address: { type: String },
+    academicYear: { type: String, required: true },
   },
   {
     timestamps: true,

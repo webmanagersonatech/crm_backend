@@ -47,6 +47,11 @@ export const settingsSchema = Joi.object({
   contactEmail: Joi.string().email().optional().messages({
     'string.email': 'Contact email must be a valid email address',
   }),
+  academicYear: Joi.string().required().messages({
+    'any.required': 'Academic year is required',
+    'string.empty': 'Academic year cannot be empty',
+  }),
+
 
   contactNumber: Joi.string()
     .pattern(/^[0-9+\-\s()]{7,20}$/)

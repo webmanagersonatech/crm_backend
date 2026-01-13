@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import Application from './model'
 import { createApplicationSchema } from './application.sanitize'
 import { AuthRequest } from '../../middlewares/auth'
-import FormManager from '../form-manage/model'
+
 import Student from '../students/model'
 import LeadModel from '../lead/model'
 import crypto from "crypto";
@@ -10,12 +10,40 @@ import { StudentAuthRequest } from '../../middlewares/studentAuth'
 import Settings from '../settings/model'
 import emailtemplates from '../email-templates/model';
 
+
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 const defaultClient = SibApiV3Sdk.ApiClient.instance;
 defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+const smsApi = new SibApiV3Sdk.TransactionalSMSApi(); // ✅ Correct
+
+
+
+const extractAddress = (personalDetails: any[]) => {
+  let country = "";
+  let state = "";
+  let city = "";
+
+  personalDetails.forEach(section => {
+    Object.entries(section.fields || {}).forEach(([key, value]) => {
+      const field = key.toLowerCase();
+
+      if (field.includes("country") && !country) {
+        country = value as string;
+      }
+      if (field.includes("state") && !state) {
+        state = value as string;
+      }
+      if (field.includes("city") && !city) {
+        city = value as string;
+      }
+    });
+  });
+
+  return { country, state, city };
+};
 
 
 export const generatePassword = (length = 10) =>
@@ -30,27 +58,29 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
     const { templateId, recipients } = req.body;
 
     if (!templateId || !recipients || !recipients.length) {
-      return res.status(400).json({ success: false, message: "Missing templateId or recipients" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing templateId or recipients" });
     }
 
     // Fetch template from DB
     const template = await emailtemplates.findById(templateId);
     if (!template) {
-      return res.status(404).json({ success: false, message: "Template not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Template not found" });
     }
 
-    const results = [];
+    const results: Array<any> = [];
 
-    // Loop through recipients
     for (const recipient of recipients) {
       const htmlContent = template.description
         .replace(/candidatename/g, recipient.name)
-        .replace(/{{applicationId}}/g, recipient.applicationId || "N/A") 
+        .replace(/{{applicationId}}/g, recipient.applicationId || "N/A")
         .replace(
           /<a href="(.*?)"(.*?)>(.*?)<\/a>/g,
           `<a href="$1"$2 style="color: blue;">$3</a>`
         );
-
 
       const emailData = {
         sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
@@ -61,16 +91,37 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 
       try {
         const response = await emailApi.sendTransacEmail(emailData);
-        results.push({ email: recipient.email, success: true, messageId: response.messageId });
+        results.push({
+          email: recipient.email,
+          success: true,
+          messageId: response.messageId,
+        });
       } catch (err: any) {
-        results.push({ email: recipient.email, success: false, error: err.message });
+        // Extract detailed error info
+        let errorMsg = "Unknown error";
+        if (err.response && err.response.body) {
+          // API-specific error
+          errorMsg = JSON.stringify(err.response.body);
+        } else if (err.message) {
+          errorMsg = err.message;
+        }
+
+        results.push({
+          email: recipient.email,
+          success: false,
+          error: errorMsg,
+        });
       }
     }
 
     return res.status(200).json({ success: true, results });
   } catch (err: any) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: "Failed to send emails", error: err.message });
+    console.error("SendTemplateMail failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send emails",
+      error: err.message,
+    });
   }
 };
 
@@ -96,16 +147,59 @@ export const sendPasswordEmail = async (
 };
 
 
+// Send SMS from payload
+export const sendSMS = async (req: AuthRequest, res: Response) => {
+  try {
+    const { recipientNumber, message } = req.body;
 
+    // Validate payload
+    if (!recipientNumber || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "recipientNumber and message are required in payload",
+      });
+    }
 
+    const sendSms = new SibApiV3Sdk.SendTransacSms();
+    sendSms.sender = "TESTSMS"; // Replace with your Brevo sender ID
+    sendSms.recipient = recipientNumber; // e.g., +919XXXXXXXXX
+    sendSms.content = message;
+
+    // Send SMS via Brevo
+    const response = await smsApi.sendTransacSms(sendSms);
+
+    // Return JSON response
+    return res.status(200).json({
+      success: true,
+      message: `SMS sent successfully to ${recipientNumber}`,
+      response,
+    });
+  } catch (err: any) {
+    console.error("Failed to send SMS:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send SMS",
+      error: err.message || err,
+    });
+  }
+};
 
 
 export const createApplication = async (req: AuthRequest, res: Response) => {
   try {
     const instituteId = req.body.instituteId || req.user?.instituteId;
+
     const program = req.body.program;
-    const academicYear = req.body.academicYear;
+
+    const settings = await Settings.findOne({ instituteId })
+
+    if (!settings && !req.body.academicYear) {
+      return res.status(400).json({ message: 'Academic year not found' })
+    }
+    const academicYear = req.body.academicYear || settings?.academicYear
     const leadId = req.body.leadId;
+    const applicationSource =
+      req.body.applicationSource || "offline";
 
     // Parse JSON fields (sent via multipart/form-data)
     const personalDetails =
@@ -161,6 +255,8 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       {},
       ...personalDetails.map((s: any) => s.fields)
     );
+    // 👇 ADD THIS AFTER flattenedPersonalFields creation
+    const { country, state, city } = extractAddress(personalDetails);
 
 
     const email = flattenedPersonalFields["Email Address"];
@@ -180,22 +276,39 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
-    // Check or create student
-    let student = await Student.findOne({ email });
-    let plainPassword: string | null = null;
-    if (!student) {
-      plainPassword = generatePassword();
-      student = await Student.create({
-        firstname,
-        lastname: flattenedPersonalFields["Last Name"] || "",
-        email,
-        mobileNo,
-        instituteId,
-        password: plainPassword,
-        status: "active",
+    const existingByMobile = await Student.findOne({ instituteId, mobileNo });
+
+    if (existingByMobile) {
+      return res.status(409).json({
+        success: false,
+        message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
       });
-      await sendPasswordEmail(email, firstname, plainPassword);
     }
+
+    // 2️⃣ Then check by EMAIL
+    const existingByEmail = await Student.findOne({ instituteId, email });
+
+    if (existingByEmail) {
+      return res.status(409).json({
+        success: false,
+        message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
+        ,
+      });
+    }
+
+    const plainPassword = generatePassword();
+
+    const student = await Student.create({
+      firstname,
+      lastname: flattenedPersonalFields["Last Name"] || "",
+      email,
+      mobileNo,
+      instituteId,
+      password: plainPassword,
+      status: "active",
+    });
+
+    await sendPasswordEmail(email, firstname, plainPassword);
 
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
@@ -206,16 +319,29 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .filter(Boolean)
         .join(" ");
 
+    let leadStatus = "New";
+    if (leadId) {
+      const lead = await LeadModel.findOne({ leadId });
+      if (lead?.status) {
+        leadStatus = lead.status;
+      }
+    }
+
     // Create application (store **arrays** directly!)
     const application = await Application.create({
       instituteId,
       program,
       userId: createdBy,
       leadId,
+      interactions: leadStatus,
+      applicationSource,
       academicYear,
       personalDetails,   // store array, not flattened object
       educationDetails,  // store array, not flattened object
       applicantName,
+      country,
+      state,
+      city,
       studentId: student.studentId,
       paymentStatus: "Unpaid",
       status: "Pending",
@@ -225,11 +351,13 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     await Student.findByIdAndUpdate(student._id, {
       applicationId: application.applicationId,
     });
+
     if (leadId)
       await LeadModel.findOneAndUpdate(
         { leadId },
-        { applicationId: application._id },
+        { applicationId: application.applicationId },
         { new: true }
+
       );
 
     return res.status(200).json({
@@ -266,7 +394,8 @@ export const createApplicationByStudent = async (
     const instituteId = req.body.instituteId || req.student?.instituteId;
     const program = req.body.program;
     const academicYear = req.body.academicYear;
-
+    const applicationSource =
+      req.body.applicationSource || "online";
     // Validate request
     const { error } = createApplicationSchema.validate({
       instituteId,
@@ -309,7 +438,7 @@ export const createApplicationByStudent = async (
       {},
       ...personalDetails.map((s: any) => s.fields)
     );
-
+    const { country, state, city } = extractAddress(personalDetails);
     const email = flattenedPersonalFields["Email Address"];
     const mobileNo = flattenedPersonalFields["Contact Number"];
     const firstname =
@@ -372,7 +501,11 @@ export const createApplicationByStudent = async (
           academicYear,
           personalDetails,
           educationDetails,
+          applicationSource,
           applicantName,
+          country,
+          state,
+          city,
           studentId: student.studentId,
           paymentStatus: "Unpaid",
           status: "Pending",
@@ -388,6 +521,10 @@ export const createApplicationByStudent = async (
         createdBystudent,
         Applicationmode,
         academicYear,
+        applicationSource,
+        country,
+        state,
+        city,
         personalDetails,
         educationDetails,
         applicantName,
@@ -606,6 +743,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     const program = req.body.program || application.program
     const academicYear = req.body.academicYear || application.academicYear
 
+
     // Parse JSON arrays
     const personalDetails =
       typeof req.body.personalDetails === "string"
@@ -655,6 +793,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       {},
       ...personalDetails.map((s: any) => s.fields)
     )
+    const { country, state, city } = extractAddress(personalDetails);
 
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
@@ -670,6 +809,10 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.program = program
     application.academicYear = academicYear
     application.personalDetails = personalDetails
+    application.country = country ?? application.country;
+    application.state = state ?? application.state;
+    application.city = city ?? application.city;
+
     application.educationDetails = educationDetails
     application.applicantName = applicantName || application.applicantName
 
@@ -800,6 +943,12 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       };
     }
 
+    if (req.query.country) filter.country = req.query.country;
+    if (req.query.state) filter.state = req.query.state;
+    if (req.query.city) filter.city = req.query.city;
+    if (req.query.applicationSource) filter.applicationSource = req.query.applicationSource;
+    if (req.query.interactions) filter.interactions = req.query.interactions;
+
     if (req.query.startDate || req.query.endDate) {
       const dateFilter: any = {};
 
@@ -823,7 +972,11 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       limit,
       sort: { createdAt: -1 },
       populate: [
-        { path: 'institute', select: 'name ' }
+        { path: 'institute', select: 'name ' },
+        {
+          path: "lead",          // ← virtual from Application
+          select: "_id",
+        },
       ]
     }
 

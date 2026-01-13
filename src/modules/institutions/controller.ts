@@ -105,6 +105,39 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
   }
 };
 
+
+export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response) => {
+  try {
+    const { instituteId } = req.params;
+
+    if (!instituteId) {
+      return res.status(400).json({ message: 'Institute ID is required' });
+    }
+
+    // Validate institute exists and is active
+    const institution = await Institution.findOne({ instituteId, status: 'active' });
+    if (!institution) {
+      return res.status(404).json({ message: 'Invalid or inactive institute' });
+    }
+
+    // Set cookie
+    res.cookie('instituteId', instituteId, {
+      httpOnly: true, // hidden from JS
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'lax', // avoids CSRF issues
+      maxAge: 1000 * 60 * 60, // 1 hour
+    });
+
+    // Redirect to student portal
+    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
+    res.redirect(portalURL);
+
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 export const getActiveInstitutions = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: 'Not authorized' });

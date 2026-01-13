@@ -10,7 +10,8 @@ import {
     sendTemplateMails,
     createApplicationByStudent,
     getApplicationByStudent,
-    getApplicationByStudents
+    getApplicationByStudents,
+    sendSMS
 } from './controller'
 import { protect } from '../../middlewares/auth'
 import { studentProtect } from "../../middlewares/studentAuth";
@@ -19,6 +20,7 @@ import { upload } from "./multerConfig";
 const router = Router()
 
 router.post("/", protect, upload.any(), createApplication);
+router.post("/sms", sendSMS);
 router.post("/student", studentProtect, upload.any(), createApplicationByStudent);
 router.get("/student/:applicationId", studentProtect, getApplicationByStudent);
 router.get("/getapplicationstudent", studentProtect, getApplicationByStudents);

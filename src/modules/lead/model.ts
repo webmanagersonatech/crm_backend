@@ -6,18 +6,24 @@ export interface ILead extends Document {
   leadId: string;
   instituteId: string;
   applicationId?: string;
+
   program?: string;
   campaign?: string;
   candidateName: string;
   ugDegree?: string;
   phoneNumber?: string;
   dateOfBirth?: Date;
+  email?: string;
+  isduplicate: boolean;
+  duplicateReason?: string;
   country?: string;
   state?: string;
   city?: string;
   status?: string;
   communication?: string;
   followUpDate?: Date;
+  counsellorName?: string; // optional
+  leadSource: "offline" | "online" | "application";
   followups: {
     status: string;
     communication?: string;
@@ -26,7 +32,8 @@ export interface ILead extends Document {
     calltaken?: string;
   }[];
   description?: string;
-  createdBy: mongoose.Types.ObjectId;
+  createdBy?
+  : mongoose.Types.ObjectId;
 }
 const FollowUpSchema = new Schema(
   {
@@ -46,14 +53,32 @@ const LeadSchema = new Schema<ILead>(
     instituteId: { type: String, required: true },
     campaign: { type: String },
     program: { type: String, },
+    email: { type: String, required: false },
     candidateName: { type: String, required: true },
     ugDegree: { type: String },
     applicationId: { type: String },
-    phoneNumber: { type: String, required: true },
+    phoneNumber: { type: String, },
+
+    isduplicate: {
+      type: Boolean,
+      default: false,
+    },
+
+    duplicateReason: {
+      type: String,
+      trim: true,
+    },
     dateOfBirth: { type: Date },
     country: { type: String },
     state: { type: String },
     city: { type: String },
+    counsellorName: { type: String }, // optional
+    leadSource: {
+      type: String,
+      enum: ["offline", "online", "application"],
+      default: "offline",
+    },
+
     followups: {
       type: [FollowUpSchema],
       default: [],
@@ -63,7 +88,7 @@ const LeadSchema = new Schema<ILead>(
     communication: { type: String },
     followUpDate: { type: Date },
     description: { type: String },
-    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: false },
   },
   {
     timestamps: true,
@@ -85,6 +110,14 @@ LeadSchema.virtual("institute", {
   foreignField: "instituteId",
   justOne: true,
 });
+
+LeadSchema.virtual("application", {
+  ref: "Application",
+  localField: "applicationId",
+  foreignField: "applicationId",
+  justOne: true,
+});
+
 
 LeadSchema.pre<ILead>("save", async function (next) {
   if (!this.leadId) {

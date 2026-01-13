@@ -8,7 +8,8 @@ import {
   getActiveInstitutions,
   getActiveData,
   getInstituteIdViaCookie,
-  getActiveInstitutionsbystudent
+  getActiveInstitutionsbystudent,
+  getenquiryInstituteIdViaCookie
 
 } from './controller';
 import { protect } from '../../middlewares/auth';
@@ -16,7 +17,8 @@ import { protect } from '../../middlewares/auth';
 const router = Router();
 router.get('/active', protect, getActiveInstitutions);
 router.get('/active-institutions', getActiveInstitutionsbystudent);
-router.get('/apply/:instituteId', getInstituteIdViaCookie)
+router.get('/apply/:instituteId', getenquiryInstituteIdViaCookie)
+router.get('/enquiry/:instituteId', getInstituteIdViaCookie)
 router.get('/activedata', protect, getActiveData);
 router.get('/', protect, listInstitutions);
 router.post('/', protect, createInstitution);

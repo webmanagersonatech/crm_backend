@@ -15,6 +15,7 @@ router.post('/', protect, upsertSettings);
 
 router.get('/student/:instituteId', getSettingsBystudent);
 
+
 router.get('/:instituteId', protect, getSettingsByInstitute);
 
 

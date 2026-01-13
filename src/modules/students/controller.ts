@@ -52,14 +52,13 @@ export const createStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { email, firstname, mobileNo } = value;
-
-    const existing = await Student.findOne({ email });
+    const { email, firstname, mobileNo,instituteId } = value;
+    const existing = await Student.findOne({instituteId, email });
     if (existing) {
       return res.status(400).json({ message: "Student already exists" });
     }
     // Check if mobile number already exists
-    const existingMobile = await Student.findOne({ mobileNo });
+    const existingMobile = await Student.findOne({instituteId, mobileNo });
     if (existingMobile) {
       return res.status(400).json({ message: "Mobile number already exists" });
     }

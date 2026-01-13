@@ -64,6 +64,7 @@ export const getSettingsBystudent = async (req: StudentAuthRequest, res: Respons
         courses: settings.courses,
         instituteName: institute ? institute.name : null,
         logo: settings.logo,
+        applicantage: settings.applicantAge
       },
     });
   } catch (error) {
@@ -71,6 +72,11 @@ export const getSettingsBystudent = async (req: StudentAuthRequest, res: Respons
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
+
+
+
 
 
 // Get settings by institute ID
