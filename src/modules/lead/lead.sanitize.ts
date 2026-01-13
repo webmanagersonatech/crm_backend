@@ -17,4 +17,5 @@ export const createLeadSchema = Joi.object({
   description: Joi.string().optional().allow(''),
   leadSource: Joi.string().optional(),
   applicationId: Joi.string().optional().allow(null, ""),
+  counsellorName: Joi.string().optional().allow(''),
 });

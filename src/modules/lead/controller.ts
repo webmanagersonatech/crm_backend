@@ -33,8 +33,7 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   const user = await User.findById(createdBy).lean();
 
-  const calltaken =
-    `${user?.firstname || ""} ${user?.lastname || ""}`.trim();
+  const calltaken = (value.counsellorName || `${user?.firstname || ""} ${user?.lastname || ""}`).trim();
   const firstFollowUp = {
     status: value.status,
     calltaken,
@@ -62,8 +61,61 @@ export const createLead = async (req: AuthRequest, res: Response) => {
   res.json(lead);
 };
 
+// export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
+//   const { error, value } = createLeadSchema.validate(req.body);
+//   if (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+
+//   const instituteId = req.body.instituteId;
+
+//   // Find all existing leads with the same phone number for this institute
+//   const existingLeads = await Lead.find({
+//     phoneNumber: value.phoneNumber,
+//     instituteId,
+//   });
+
+//   let duplicateReason = null;
+
+//   if (existingLeads.length > 0) {
+//     // Collect all existing lead IDs
+//     const duplicateLeadIds = existingLeads.map(lead => lead.leadId.toString());
+
+//     // Set duplicate reason
+//     duplicateReason = `A lead with this phone number already exists in our system (${existingLeads.length} duplicate${existingLeads.length > 1 ? 's' : ''}). Existing Lead IDs: ${duplicateLeadIds.join(", ")}. Please review before follow-up.`;
+//   }
+
+//   const firstFollowUp = {
+//     status: value.status || "New",
+//     calltaken: value.calltaken || "",
+//     communication: value.communication || "Online",
+//     followUpDate: value.followUpDate ? new Date(value.followUpDate) : new Date(),
+//     description: value.description || "This lead enquiry has come from online",
+//   };
+
+//   const lead = await Lead.create({
+//     ...value,
+//     instituteId,
+//     followups: [firstFollowUp],
+//     isduplicate: existingLeads.length > 0,
+//     duplicateReason,
+//   });
+
+//   return res.status(201).json({
+//     success: true,
+//     message: "Enquiry submitted successfully",
+//     data: lead,
+
+//   });
+// };
+
+
 export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
+
   if (error) {
     return res.status(400).json({
       success: false,
@@ -71,48 +123,53 @@ export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
     });
   }
 
-  const instituteId = req.body.instituteId;
+  const { instituteId, phoneNumber } = value;
 
-  // Find all existing leads with the same phone number for this institute
-  const existingLeads = await Lead.find({
-    phoneNumber: value.phoneNumber,
-    instituteId,
-  });
+  try {
+    const existingLead = await Lead.findOne({ instituteId, phoneNumber });
 
-  let duplicateReason = null;
+    // 🚨 DUPLICATE
+    if (existingLead) {
+      return res.status(409).json({
+        success: false,                 // important
+        alreadyEnquired: true,
+        message: "You have already enquired. Our team will respond to you shortly.",
+        data: existingLead,
+      });
+    }
 
-  if (existingLeads.length > 0) {
-    // Collect all existing lead IDs
-    const duplicateLeadIds = existingLeads.map(lead => lead.leadId.toString());
+    const firstFollowUp = {
+      status: value.status || "New",
+      calltaken: value.calltaken || "",
+      communication: value.communication || "Online",
+      followUpDate: value.followUpDate ? new Date(value.followUpDate) : new Date(),
+      description: value.description || "This lead enquiry has come from online",
+    };
 
-    // Set duplicate reason
-    duplicateReason = `A lead with this phone number already exists in our system (${existingLeads.length} duplicate${existingLeads.length > 1 ? 's' : ''}). Existing Lead IDs: ${duplicateLeadIds.join(", ")}. Please review before follow-up.`;
+    const lead = await Lead.create({
+      ...value,
+      instituteId,
+      followups: [firstFollowUp],
+      isduplicate: false,
+      duplicateReason: null,
+    });
+
+    // ✅ CREATED
+    return res.status(201).json({
+      success: true,
+      alreadyEnquired: false,
+      message: "Enquiry submitted successfully. Our team will contact you shortly.",
+      data: lead,
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to submit enquiry. Please try again later.",
+    });
   }
-
-  const firstFollowUp = {
-    status: value.status || "New",
-    calltaken: value.calltaken || "",
-    communication: value.communication || "Online",
-    followUpDate: value.followUpDate ? new Date(value.followUpDate) : new Date(),
-    description: value.description || "This lead enquiry has come from online",
-  };
-
-  const lead = await Lead.create({
-    ...value,
-    instituteId,
-    followups: [firstFollowUp],
-    isduplicate: existingLeads.length > 0,
-    duplicateReason,
-  });
-
-  return res.status(201).json({
-    success: true,
-    message: "Enquiry submitted successfully",
-    data: lead,
-
-  });
 };
-
 
 
 
@@ -300,8 +357,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
     // ➕ Push followup separately
     if (isFollowUpChanged) {
       const user = await User.findById(req.user?.id).lean();
-      const calltaken =
-        `${user?.firstname || ""} ${user?.lastname || ""}`.trim();
+      const calltaken = (rest.counsellorName || `${user?.firstname || ""} ${user?.lastname || ""}`).trim();
       updateQuery.$push = {
         followups: {
           status,

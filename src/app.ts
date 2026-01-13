@@ -28,7 +28,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'], // frontend URLs
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'], // frontend URLs
     credentials: true, // ✅ allows cookies to be sent
 }));
 

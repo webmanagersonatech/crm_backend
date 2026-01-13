@@ -403,6 +403,7 @@ export const importOthers = async (req: AuthRequest, res: Response) => {
     const existing = await Other.find({
       instituteId,
       phone: { $in: phones },
+      dataSource
     }).lean();
 
     if (existing.length) {
@@ -510,7 +511,7 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
       instituteId: other.instituteId,
       candidateName: other.name,
       phoneNumber: other.phone,
-      dateOfBirth:  null,
+      dateOfBirth: null,
       program: "",
       status: "New",
       communication: "Phone",
@@ -595,13 +596,68 @@ export const listOthers = async (req: AuthRequest, res: Response) => {
 // 🔹 Get single record
 export const getOther = async (req: Request, res: Response) => {
   try {
-    const other = await Other.findById(req.params.id).populate('creator', 'firstname lastname');
-    if (!other) return res.status(404).json({ message: 'Not found' });
-    res.json(other);
+    const other = await Other.findById(req.params.id).populate([
+      { path: "institute", select: "name" }
+    ]);
+
+    if (!other) {
+      return res.status(404).json({
+        success: false,
+        message: "Not found"
+      });
+    }
+
+    // 1️⃣ Same phone + SAME institute
+    const sameInstitute = await Other.find({
+      phone: other.phone,
+      instituteId: other.instituteId
+    })
+      .populate({ path: "institute", select: "name" })
+      .select("dataSource name recordId instituteId createdAt institute");
+
+    // 2️⃣ Same phone across ALL institutes
+    const allInstitutes = await Other.find({
+      phone: other.phone
+    })
+      .populate({ path: "institute", select: "name" })
+      .select("dataSource name recordId instituteId createdAt institute");
+
+    return res.status(200).json({
+      success: true,
+      main: other,
+
+      relatedParticularInstituteSources: sameInstitute.map((o: any) => ({
+        dataSource: o.dataSource,
+        name: o.name,
+        recordId: o.recordId,
+        institute: o.institute?.name || "N/A",
+        instituteId: o.instituteId,
+        createdAt: o.createdAt
+      })),
+
+      relatedOverallInstituteSources: allInstitutes.map((o: any) => ({
+        dataSource: o.dataSource,
+        name: o.name,
+        recordId: o.recordId,
+        institute: o.institute?.name || "N/A",
+        instituteId: o.instituteId,
+        createdAt: o.createdAt
+      }))
+    });
+
   } catch (err: any) {
-    res.status(500).json({ message: err.message });
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load data"
+    });
   }
 };
+
+
+
+
+
 
 // 🔹 Update
 export const updateOther = async (req: AuthRequest, res: Response) => {

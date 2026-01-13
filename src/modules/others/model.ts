@@ -16,6 +16,8 @@ export interface IOther extends Document {
   extraFields?: Record<string, any>;
   leadId?: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const OtherSchema = new Schema<IOther>(
@@ -35,7 +37,7 @@ const OtherSchema = new Schema<IOther>(
       type: Schema.Types.Mixed,
       default: {},
     },
-    
+
     leadId: {
       type: Schema.Types.ObjectId,
       ref: "Lead",

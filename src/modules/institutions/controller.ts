@@ -87,13 +87,14 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invalid or inactive institute' });
     }
 
-    // Set cookie
     res.cookie('instituteId', instituteId, {
-      httpOnly: true, // hidden from JS
-      secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'lax', // avoids CSRF issues
+      httpOnly: process.env.NODE_ENV === 'production', // ✅ true in prod, false on localhost
+      secure: process.env.NODE_ENV === 'production',   // ✅ HTTPS in prod, false on localhost
+      sameSite: 'lax',
       maxAge: 1000 * 60 * 60, // 1 hour
+      path: '/', // make it accessible site-wide
     });
+
 
     // Redirect to student portal
     const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
@@ -120,16 +121,17 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
       return res.status(404).json({ message: 'Invalid or inactive institute' });
     }
 
-    // Set cookie
     res.cookie('instituteId', instituteId, {
-      httpOnly: true, // hidden from JS
-      secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'lax', // avoids CSRF issues
+      httpOnly: process.env.NODE_ENV === 'production', // ✅ true in prod, false in localhost
+      secure: process.env.NODE_ENV === 'production',   // ✅ HTTPS in prod, false in localhost
+      sameSite: 'lax',
       maxAge: 1000 * 60 * 60, // 1 hour
+      path: '/', // make it accessible site-wide
     });
 
+
     // Redirect to student portal
-    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
+    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3002';
     res.redirect(portalURL);
 
   } catch (err: any) {
