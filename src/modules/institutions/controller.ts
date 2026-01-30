@@ -131,7 +131,7 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
 
 
     // Redirect to student portal
-    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3002';
+    const portalURL = process.env.ENQUIRY_PORTAL_URL || 'http://localhost:3002';
     res.redirect(portalURL);
 
   } catch (err: any) {
