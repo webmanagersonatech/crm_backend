@@ -71,5 +71,5 @@ export const studentSchema = Joi.object({
 
   status: Joi.string()
     .valid("active", "inactive")
-    .default("inactive"),
+    .default("active"),
 });
