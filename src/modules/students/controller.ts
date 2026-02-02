@@ -24,7 +24,7 @@ const generatePassword = (length = 8) => {
 // Send password email
 const sendPasswordEmail = async (email: string, firstname: string, password: string) => {
   const emailData = {
-    sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+    sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
     to: [{ email, name: firstname || "Student" }],
     subject: "Your Account Password",
     htmlContent: `

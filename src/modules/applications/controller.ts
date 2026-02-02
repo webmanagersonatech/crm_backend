@@ -83,7 +83,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
         );
 
       const emailData = {
-        sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+        sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
         to: [{ email: recipient.email, name: recipient.name }],
         subject: template.title,
         htmlContent,
@@ -139,7 +139,7 @@ export const sendPasswordEmail = async (
   `;
 
   await emailApi.sendTransacEmail({
-    sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+    sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
     to: [{ email, name }],
     subject: "Student Account Created",
     htmlContent,
