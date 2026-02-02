@@ -81,7 +81,7 @@ export const createOtpstudent = async (req: Request, res: Response) => {
     await Otp.create({ email, otp, expiresAt });
 
     const emailData = {
-      sender: { email: "vinor1213@gmail.com", name: "Vinoth" },
+      sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
       to: [{ email, name: student.firstname || "User" }],
       subject: "Your OTP Code",
       htmlContent: `
