@@ -702,10 +702,22 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
 
     const applications = await (Application as any).paginate(filter, options);
 
+    const yearFilter: any = {}
+
+    if (filter.instituteId) {
+      yearFilter.instituteId = filter.instituteId
+    }
+
+   
+
+    const academicYears = await Application.distinct("academicYear", yearFilter)
+
+
     res.status(200).json({
       success: true,
       message: "Unpaid applications fetched successfully",
       applications,
+      academicYears
     });
   } catch (error: any) {
     console.error("Error fetching unpaid applications:", error);
@@ -913,6 +925,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     let filter: any = {}
 
 
+
     if (user.role === 'superadmin') {
       filter = {}
     } else if (user.role === 'admin') {
@@ -981,6 +994,19 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     }
 
     const applications = await (Application as any).paginate(filter, options)
+    const yearFilter: any = {}
+
+    if (filter.instituteId) {
+      yearFilter.instituteId = filter.instituteId
+    }
+
+    if (filter.createdAt) {
+      yearFilter.createdAt = filter.createdAt
+    }
+
+    const academicYears = await Application.distinct("academicYear", yearFilter)
+
+
     res.status(200).json({
       success: true,
       message: 'Applications fetched successfully',
@@ -990,7 +1016,8 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
         currentPage: applications.page,
         limit: applications.limit
       },
-      data: applications.docs
+      data: applications.docs,
+      academicYears
     })
   } catch (error: any) {
     console.error('Error fetching applications:', error)
