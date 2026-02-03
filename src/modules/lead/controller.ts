@@ -4,7 +4,7 @@ import User from '../auth/auth.model';
 import { createLeadSchema } from './lead.sanitize';
 import Application from '../applications/model';
 import { AuthRequest } from '../../middlewares/auth';
-
+import Student from '../students/model'
 
 export const createLead = async (req: AuthRequest, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
@@ -50,12 +50,28 @@ export const createLead = async (req: AuthRequest, res: Response) => {
   });
 
   if (value.applicationId) {
-    await Application.findOneAndUpdate(
+    // 1️⃣ Update Application & STORE result
+    const application = await Application.findOneAndUpdate(
       { applicationId: value.applicationId },
-      { $set: { leadId: lead.leadId }, interactions: lead.status, },
+      {
+        $set: {
+          leadId: lead.leadId,
+          interactions: lead.status,
+        },
+      },
       { new: true }
     );
+
+    // 2️⃣ Sync Student
+    if (application?.studentId) {
+      await Student.findOneAndUpdate(
+        { studentId: application.studentId },
+        { interactions: application.interactions },
+        { new: true }
+      );
+    }
   }
+
 
 
   res.json(lead);
@@ -377,12 +393,23 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
     );
 
     if (updatedLead?.applicationId) {
-      await Application.findOneAndUpdate(
+      // 1️⃣ Update Application
+      const application = await Application.findOneAndUpdate(
         { applicationId: updatedLead.applicationId },
         { interactions: updatedLead.status },
         { new: true }
       );
+
+      // 2️⃣ Sync Student (only if application exists)
+      if (application?.studentId) {
+        await Student.findOneAndUpdate(
+          { studentId: application.studentId },
+          { interactions: application.interactions },
+          { new: true }
+        );
+      }
     }
+
 
 
     res.json(updatedLead);

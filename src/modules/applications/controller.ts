@@ -198,6 +198,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     }
     const academicYear = req.body.academicYear || settings?.academicYear
     const leadId = req.body.leadId;
+
     const applicationSource =
       req.body.applicationSource || "offline";
 
@@ -296,12 +297,26 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       });
     }
 
+
+    let leadStatus = "New";
+
+    if (leadId) {
+      const lead = await LeadModel.findOne({ leadId });
+      if (lead?.status) {
+        leadStatus = lead.status;
+      }
+    }
     const plainPassword = generatePassword();
 
     const student = await Student.create({
       firstname,
       lastname: flattenedPersonalFields["Last Name"] || "",
       email,
+      academicYear,
+      interactions: leadStatus,
+      country,
+      state,
+      city,
       mobileNo,
       instituteId,
       password: plainPassword,
@@ -319,13 +334,6 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .filter(Boolean)
         .join(" ");
 
-    let leadStatus = "New";
-    if (leadId) {
-      const lead = await LeadModel.findOne({ leadId });
-      if (lead?.status) {
-        leadStatus = lead.status;
-      }
-    }
 
     // Create application (store **arrays** directly!)
     const application = await Application.create({
@@ -411,6 +419,7 @@ export const createApplicationByStudent = async (
     const createdBy = req.student?.id;
     const createdBystudent = true
     const Applicationmode = "online"
+
     if (!createdBy)
       return res.status(401).json({ success: false, message: "Not authorized" });
 
@@ -512,7 +521,14 @@ export const createApplicationByStudent = async (
           formStatus,
         },
         { new: true }
+
       );
+      student.country = country;
+      student.state = state;
+      student.city = city;
+      student.academicYear = academicYear;
+      student.interactions = application?.interactions
+      await student.save();
     } else {
       // ✅ Create new application
       application = await Application.create({
@@ -536,6 +552,11 @@ export const createApplicationByStudent = async (
 
       // Link student to this new application
       student.applicationId = application.applicationId;
+      student.country = country;
+      student.state = state;
+      student.city = city;
+      student.interactions = "New"
+      student.academicYear = academicYear;
       await student.save();
     }
 
@@ -708,7 +729,7 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
       yearFilter.instituteId = filter.instituteId
     }
 
-   
+
 
     const academicYears = await Application.distinct("academicYear", yearFilter)
 
@@ -733,6 +754,8 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: "Not authorized" })
 
     const { id } = req.params
+
+
     const application = await Application.findById(id)
 
     if (!application) {
@@ -805,7 +828,45 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       {},
       ...personalDetails.map((s: any) => s.fields)
     )
+
     const { country, state, city } = extractAddress(personalDetails);
+
+    const email = flattenedPersonalFields["Email Address"];
+    const mobileNo = flattenedPersonalFields["Contact Number"];
+    const firstname =
+      flattenedPersonalFields["Full Name"] ||
+      [
+        flattenedPersonalFields["First Name"],
+        flattenedPersonalFields["Last Name"],
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    if (!email || !firstname || !mobileNo)
+      return res
+        .status(400)
+        .json({ success: false, message: "Required student fields missing" });
+
+    const existingByMobile = await Student.findOne({ instituteId, mobileNo,  studentId: { $ne: application.studentId }, });
+
+    if (existingByMobile) {
+      return res.status(409).json({
+        success: false,
+        message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
+      });
+    }
+
+    // 2️⃣ Then check by EMAIL
+    const existingByEmail = await Student.findOne({ instituteId, email ,  studentId: { $ne: application.studentId },});
+
+    if (existingByEmail) {
+      return res.status(409).json({
+        success: false,
+        message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
+        ,
+      });
+    }
 
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
@@ -816,6 +877,9 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         .filter(Boolean)
         .join(" ")
 
+
+
+
     // ✅ Update document
     application.instituteId = instituteId
     application.program = program
@@ -824,11 +888,27 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.country = country ?? application.country;
     application.state = state ?? application.state;
     application.city = city ?? application.city;
-
     application.educationDetails = educationDetails
     application.applicantName = applicantName || application.applicantName
 
     await application.save()
+
+    await Student.findOneAndUpdate(
+      { studentId: application.studentId },
+      {
+        firstname,                 // ✅ update name
+        email,                     // ✅ update email
+        mobileNo,                  // ✅ update mobile
+        country: application.country,
+        state: application.state,
+        city: application.city,
+        academicYear: application.academicYear,
+        interactions: application.interactions,
+      },
+      { new: true }
+    );
+
+
 
     return res.status(200).json({
       success: true,

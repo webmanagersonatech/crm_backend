@@ -16,6 +16,8 @@ export interface IStudent extends Document {
   state: string;
   city: string;
   status: "active" | "inactive";
+  academicYear?: string;
+  interactions?: string;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -29,6 +31,8 @@ const StudentSchema = new Schema<IStudent>(
     password: { type: String, required: true },
     mobileNo: { type: String, required: true, unique: true },
     instituteId: { type: String, required: true },
+    academicYear: { type: String },   // ✅ added
+    interactions: { type: String },
     country: { type: String, },
     state: { type: String, },
     city: { type: String, },
