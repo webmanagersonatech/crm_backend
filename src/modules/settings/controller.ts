@@ -64,7 +64,8 @@ export const getSettingsBystudent = async (req: StudentAuthRequest, res: Respons
         courses: settings.courses,
         instituteName: institute ? institute.name : null,
         logo: settings.logo,
-        applicantage: settings.applicantAge
+        applicantage: settings.applicantAge,
+        isApplicationOpen: settings.isApplicationOpen ?? false
       },
     });
   } catch (error) {

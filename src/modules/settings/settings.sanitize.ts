@@ -52,6 +52,18 @@ export const settingsSchema = Joi.object({
     'string.empty': 'Academic year cannot be empty',
   }),
 
+batchName: Joi.string()
+  .allow('')
+  .optional()
+  .messages({
+    'string.base': 'Batch name must be a string',
+  }),
+
+isApplicationOpen: Joi.boolean()
+  .optional()
+  .messages({
+    'boolean.base': 'Application status must be true or false',
+  }),
 
   contactNumber: Joi.string()
     .pattern(/^[0-9+\-\s()]{7,20}$/)

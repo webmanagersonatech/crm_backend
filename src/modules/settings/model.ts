@@ -13,6 +13,8 @@ export interface ISettings extends Document {
   applicationFee: number;
   academicYear: string;
   applicantAge: number;
+  batchName?: string;
+  isApplicationOpen?: boolean;
 }
 
 const SettingsSchema = new Schema<ISettings>(
@@ -33,6 +35,16 @@ const SettingsSchema = new Schema<ISettings>(
       min: 1,
       max: 100,
     },
+    batchName: {
+      type: String,
+      default: '',
+    },
+
+    isApplicationOpen: {
+      type: Boolean,
+      default: false,
+    },
+
     apiKey: { type: String },
     authToken: { type: String },
     contactEmail: { type: String },
