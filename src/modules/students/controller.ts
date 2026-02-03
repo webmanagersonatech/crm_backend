@@ -8,6 +8,7 @@ import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import CryptoJS from "crypto-js";
 import Settings from "../settings/model";
 import FormManage from "../form-manage/model";
+import { AuthRequest } from "../auth";
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -52,13 +53,13 @@ export const createStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { email, firstname, mobileNo,instituteId } = value;
-    const existing = await Student.findOne({instituteId, email });
+    const { email, firstname, mobileNo, instituteId } = value;
+    const existing = await Student.findOne({ instituteId, email });
     if (existing) {
       return res.status(400).json({ message: "Student already exists" });
     }
     // Check if mobile number already exists
-    const existingMobile = await Student.findOne({instituteId, mobileNo });
+    const existingMobile = await Student.findOne({ instituteId, mobileNo });
     if (existingMobile) {
       return res.status(400).json({ message: "Mobile number already exists" });
     }
@@ -142,15 +143,97 @@ export const getStudent = async (req: Request, res: Response) => {
 };
 
 // Get all students
-export const getAllStudents = async (_req: Request, res: Response) => {
+export const listStudents = async (req: AuthRequest, res: Response) => {
   try {
-    const students = await Student.find();
-    res.status(200).json({ success: true, data: students });
-  } catch (err) {
-    console.error("Error getting students:", err);
-    res.status(500).json({ message: "Internal server error" });
+    // Pagination
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    // Search
+    const search = (req.query.search as string) || "";
+
+    // Status filter
+    const status = (req.query.status as string) || "all";
+
+    // Filters from frontend
+    const bloodGroup = (req.query.bloodGroup as string) || "all";
+    const bloodDonate = (req.query.bloodDonate as string) || "all"; // "true" | "false" | "all"
+    const hostelWilling = (req.query.hostelWilling as string) || "all"; // "yes" | "no" | "all"
+    const quota = (req.query.quota as string) || "all";
+    const feedbackRating = (req.query.feedbackRating as string) || "all";
+    const familyOccupation = (req.query.familyOccupation as string) || "all";
+
+    // Location filters
+    const country = (req.query.country as string) || "all";
+    const state = (req.query.state as string) || "all";
+    const city = (req.query.city as string) || "all";
+
+    // Role-based access
+    const userRole = req.user.role;
+    const query: any = {};
+
+    if (userRole === "superadmin") {
+      const instituteId = (req.query.instituteId as string) || "all";
+      if (instituteId !== "all") query.instituteId = instituteId;
+    } else if (userRole === "admin") {
+      query.instituteId = req.user.instituteId;
+    } else {
+      return res.status(403).json({
+        status: false,
+        message: "You are not authorized to view students",
+      });
+    }
+
+    // Text search
+    if (search.trim()) {
+      query.$or = [
+        { firstname: { $regex: search, $options: "i" } },
+        { lastname: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { studentId: { $regex: search, $options: "i" } },
+        { admissionUniversityRegNo: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Status filter
+    if (status !== "all") query.status = status;
+
+    // Corrected Filters (matching your MongoDB schema)
+    if (bloodGroup !== "all") query.bloodGroup = bloodGroup;
+    if (bloodDonate !== "all") query.bloodWilling = bloodDonate === "true";
+    if (hostelWilling !== "all") query.hostelWilling = hostelWilling === "yes";
+    if (quota !== "all") query.admissionQuota = quota;
+    if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
+    if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
+
+    // Location filters
+    if (country !== "all") query.country = country;
+    if (state !== "all") query.state = state;
+    if (city !== "all") query.city = city;
+
+    query.interactions = "Admitted";
+    // Pagination + populate
+    const students = await (Student as any).paginate(query, {
+      page,
+      limit,
+      select: "-password",
+      sort: { createdAt: -1 },
+      populate: { path: "institute", select: "name" },
+    });
+
+    return res.status(200).json({ status: true, students });
+  } catch (err: any) {
+    console.error("List Students Error:", err);
+    return res.status(500).json({
+      status: false,
+      message: err.message || "Server error",
+    });
   }
 };
+
+
+
+
 
 // Edit student details
 export const updateStudent = async (req: Request, res: Response) => {
@@ -163,6 +246,7 @@ export const updateStudent = async (req: Request, res: Response) => {
 
       // Optionally send updated password to email
       const student = await Student.findById(id);
+
       if (student) await sendPasswordEmail(student.email, student.firstname, req.body.password);
     }
 
@@ -173,6 +257,35 @@ export const updateStudent = async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Error updating student:", err);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+// Update ONLY cleanup data
+export const updateStudentCleanupData = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // Remove empty enum values to avoid validation errors
+    if (updates.feedbackRating === "") delete updates.feedbackRating;
+
+    const updatedStudent = await Student.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedStudent) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Student cleanup data updated successfully",
+      data: updatedStudent,
+    });
+  } catch (err: any) {
+    console.error("Error updating student cleanup data:", err);
+    res.status(500).json({ message: err.message || "Internal server error" });
   }
 };
 
@@ -360,3 +473,9 @@ export const changePassword = async (req: StudentAuthRequest, res: Response) => 
     return res.status(500).json({ message: "Server error" });
   }
 };
+export const deleteStudent = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await Student.findByIdAndDelete(id);
+  res.status(200).json({ success: true });
+};
+

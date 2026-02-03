@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 import mongoosePaginate from "mongoose-paginate-v2";
 import crypto from "crypto";
 
+
+
+
 export interface IStudent extends Document {
   studentId: string;
   firstname: string;
@@ -18,6 +21,22 @@ export interface IStudent extends Document {
   status: "active" | "inactive";
   academicYear?: string;
   interactions?: string;
+  admissionQuota?: string;
+  admissionUniversityRegNo?: string;
+  internshipType?: string;
+  internshipCompany?: string;
+  internshipDuration?: string;
+  internshipRemarks?: string;
+  hostelWilling?: boolean;
+  hostelReason?: string;
+  bloodGroup?: string;
+  bloodWilling?: boolean;
+  familyOccupation?: string;
+  familyOtherOccupation?: string;
+  siblingsCount?: number;
+  siblingsDetails?: { name: string; age: number; status: "studying" | "working" | "both" | "none" }[];
+  feedbackRating?: "good" | "bad" | "worst";
+  feedbackReason?: string;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -37,9 +56,44 @@ const StudentSchema = new Schema<IStudent>(
     state: { type: String, },
     city: { type: String, },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
+    admissionQuota: { type: String },
+    admissionUniversityRegNo: { type: String, unique: true, required: true },
+    internshipType: { type: String },
+    internshipCompany: { type: String },
+    internshipDuration: { type: String },
+    internshipRemarks: { type: String },
+    hostelWilling: { type: Boolean, default: false },
+    hostelReason: { type: String },
+    bloodGroup: { type: String },
+    bloodWilling: { type: Boolean, default: false },
+    familyOccupation: { type: String },
+    familyOtherOccupation: { type: String },
+    siblingsCount: { type: Number, default: 0 },
+    siblingsDetails: [
+      {
+        name: { type: String },
+        age: { type: Number },
+        status: { type: String, enum: ["studying", "working", "both", "none"] },
+      },
+    ],
+    feedbackRating: { type: String, enum: ["good", "bad", "worst"] },
+    feedbackReason: { type: String },
+
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+
 );
+
+StudentSchema.virtual("institute", {
+  ref: "Institution",
+  localField: "instituteId",
+  foreignField: "instituteId",
+  justOne: true,
+});
 
 StudentSchema.plugin(mongoosePaginate);
 
