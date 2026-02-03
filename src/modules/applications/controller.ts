@@ -1108,18 +1108,38 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 // 🗑️ Delete Application (admin/superadmin only)
 export const deleteApplication = async (req: AuthRequest, res: Response) => {
   try {
-    const user = req.user
-    if (!user) return res.status(401).json({ message: 'Not authorized' })
+    const user = req.user;
+    if (!user)
+      return res.status(401).json({ success: false, message: "Not authorized" });
 
-    if (user.role === 'user') {
-      return res.status(403).json({ message: 'Access denied' })
+    if (user.role === "user") {
+      return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    const deleted = await Application.findByIdAndDelete(req.params.id)
-    if (!deleted) return res.status(404).json({ message: 'Application not found' })
+    // 1️⃣ Delete application
+    const application = await Application.findByIdAndDelete(req.params.id);
 
-    res.status(200).json({ success: true, message: 'Application deleted successfully' })
+    if (!application)
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found" });
+
+    // 2️⃣ Delete related student
+    if (application.studentId) {
+      await Student.findOneAndDelete({
+        studentId: application.studentId,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Application and related student deleted successfully",
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message })
+    console.error("❌ Delete error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: error.message });
   }
-}
+};
+
