@@ -107,13 +107,22 @@ StudentSchema.plugin(mongoosePaginate);
 
 // Auto-generate studentId and hash password
 StudentSchema.pre("save", async function (next) {
-  // Auto-generate studentId if not exists
   if (!this.studentId) {
-    const count = await mongoose.models.Student.countDocuments({ instituteId: this.instituteId });
-    this.studentId = `${this.instituteId}-stud-${count + 1}`; // e.g., INST1-stud-1
+    const lastStudent = await mongoose.models.Student
+      .findOne({ instituteId: this.instituteId })
+      .sort({ createdAt: -1 })
+      .select("studentId");
+
+    let nextNumber = 1;
+
+    if (lastStudent?.studentId) {
+      const lastNum = Number(lastStudent.studentId.split("-").pop());
+      nextNumber = lastNum + 1;
+    }
+
+    this.studentId = `${this.instituteId}-stud-${nextNumber}`;
   }
 
-  // Hash password if modified
   if (this.isModified("password")) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -121,6 +130,7 @@ StudentSchema.pre("save", async function (next) {
 
   next();
 });
+
 
 // Compare password method
 StudentSchema.methods.comparePassword = async function (candidate: string) {
