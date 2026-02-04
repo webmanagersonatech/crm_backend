@@ -95,6 +95,14 @@ StudentSchema.virtual("institute", {
   justOne: true,
 });
 
+StudentSchema.virtual("application", {
+  ref: "Application",
+  localField: "applicationId",
+  foreignField: "applicationId",
+  justOne: true,
+});
+
+
 StudentSchema.plugin(mongoosePaginate);
 
 // Auto-generate studentId and hash password

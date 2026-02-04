@@ -132,7 +132,11 @@ export const studentLogin = async (req: Request, res: Response) => {
 export const getStudent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const student = await Student.findById(id);
+
+    const student = await Student.findById(id).populate({
+      path: "application",
+      select: "personalDetails",
+    });
     if (!student) return res.status(404).json({ message: "Student not found" });
 
     res.status(200).json({ success: true, data: student });
@@ -162,6 +166,8 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     const quota = (req.query.quota as string) || "all";
     const feedbackRating = (req.query.feedbackRating as string) || "all";
     const familyOccupation = (req.query.familyOccupation as string) || "all";
+    const academicYear = (req.query.academicYear as string) || "all";
+
 
     // Location filters
     const country = (req.query.country as string) || "all";
@@ -205,6 +211,7 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     if (quota !== "all") query.admissionQuota = quota;
     if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
+    if (academicYear !== "all") query.academicYear = academicYear;
 
     // Location filters
     if (country !== "all") query.country = country;
@@ -220,8 +227,15 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
       sort: { createdAt: -1 },
       populate: { path: "institute", select: "name" },
     });
+    const Filter: any = {}
 
-    return res.status(200).json({ status: true, students });
+    if (query.instituteId) {
+      Filter.instituteId = query.instituteId
+    }
+
+    const academicYears = await Student.distinct("academicYear", Filter)
+
+    return res.status(200).json({ status: true, students, academicYears });
   } catch (err: any) {
     console.error("List Students Error:", err);
     return res.status(500).json({
@@ -230,8 +244,6 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     });
   }
 };
-
-
 
 
 
@@ -346,6 +358,7 @@ export const changePasswordwithotpverfiedstudent = async (req: any, res: Respons
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 export const getLoggedInStudent = async (
   req: StudentAuthRequest,
   res: Response
@@ -391,6 +404,7 @@ export const getLoggedInStudent = async (
     return res.status(500).json({ success: false });
   }
 };
+
 export const changePassword = async (req: StudentAuthRequest, res: Response) => {
   try {
     // ---------- Validation ----------

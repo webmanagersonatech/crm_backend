@@ -1004,8 +1004,6 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     let filter: any = {}
 
-
-
     if (user.role === 'superadmin') {
       filter = {}
     } else if (user.role === 'admin') {
@@ -1085,7 +1083,6 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     }
 
     const academicYears = await Application.distinct("academicYear", yearFilter)
-
 
     res.status(200).json({
       success: true,
