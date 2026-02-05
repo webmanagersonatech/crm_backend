@@ -172,7 +172,7 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     // Location filters
     const country = (req.query.country as string) || "all";
     const state = (req.query.state as string) || "all";
-    const city = (req.query.city as string) || "all";
+    const city = req.query.city || "all";
 
     // Role-based access
     const userRole = req.user.role;
@@ -216,7 +216,14 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     // Location filters
     if (country !== "all") query.country = country;
     if (state !== "all") query.state = state;
-    if (city !== "all") query.city = city;
+
+    if (city !== "all") {
+      if (Array.isArray(city)) {
+        query.city = { $in: city };
+      } else {
+        query.city = city;
+      }
+    }
 
     query.interactions = "Admitted";
     // Pagination + populate
@@ -225,7 +232,10 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
       limit,
       select: "-password",
       sort: { createdAt: -1 },
-      populate: { path: "institute", select: "name" },
+      populate: [
+        { path: "application", select: "_id" }, // only _id from application
+        { path: "institute", select: "name" }  // only name from institute
+      ],
     });
     const Filter: any = {}
 

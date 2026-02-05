@@ -224,7 +224,13 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     if (status) filter.status = status;
     if (country) filter.country = country;
     if (state) filter.state = state;
-    if (city) filter.city = city;
+    if (city) {
+      if (Array.isArray(city)) {
+        filter.city = { $in: city };
+      } else {
+        filter.city = city;
+      }
+    }
 
     if (communication) filter.communication = communication;
     if (candidateName) filter.candidateName = { $regex: candidateName, $options: "i" };

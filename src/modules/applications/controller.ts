@@ -19,6 +19,10 @@ defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 const smsApi = new SibApiV3Sdk.TransactionalSMSApi(); // ✅ Correct
 
+const mapSiblingStatus = (value: string) => {
+  if (!value) return "none";
+  return value.toLowerCase() === "yes" ? "studying" : "none";
+};
 
 
 const extractAddress = (personalDetails: any[]) => {
@@ -848,7 +852,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
-    const existingByMobile = await Student.findOne({ instituteId, mobileNo,  studentId: { $ne: application.studentId }, });
+    const existingByMobile = await Student.findOne({ instituteId, mobileNo, studentId: { $ne: application.studentId }, });
 
     if (existingByMobile) {
       return res.status(409).json({
@@ -858,7 +862,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     }
 
     // 2️⃣ Then check by EMAIL
-    const existingByEmail = await Student.findOne({ instituteId, email ,  studentId: { $ne: application.studentId },});
+    const existingByEmail = await Student.findOne({ instituteId, email, studentId: { $ne: application.studentId }, });
 
     if (existingByEmail) {
       return res.status(409).json({
@@ -1036,7 +1040,14 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     if (req.query.country) filter.country = req.query.country;
     if (req.query.state) filter.state = req.query.state;
-    if (req.query.city) filter.city = req.query.city;
+    if (req.query.city) {
+      if (Array.isArray(req.query.city)) {
+        filter.city = { $in: req.query.city };
+      } else {
+        filter.city = req.query.city;
+      }
+    }
+
     if (req.query.applicationSource) filter.applicationSource = req.query.applicationSource;
     if (req.query.interactions) filter.interactions = req.query.interactions;
 
@@ -1139,4 +1150,77 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
       .json({ success: false, message: error.message });
   }
 };
+
+export const updateAcademicYearInMatchedApplicationStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    // 1️⃣ Fetch all applications
+    const applications = await Application.find();
+
+    if (!applications || applications.length === 0) {
+      return res.status(404).json({ success: false, message: "No applications found" });
+    }
+
+    // 2️⃣ Loop through each application and update the corresponding student
+    for (const app of applications) {
+      const personal = app.personalDetails.find(
+        (s) => s.sectionName === "Personal Details"
+      );
+
+      const sibling = app.personalDetails.find(
+        (s) => s.sectionName === "Sibling Details"
+      );
+
+      const bloodGroup = personal?.fields?.["Blood Group"] || "";
+      const hostelWilling = personal?.fields?.["Hostel Required"] === "Yes";
+
+      let siblingsCount = 0;
+      let siblingsDetails: any[] = [];
+
+      if (sibling?.fields) {
+        siblingsCount = Number(sibling.fields["Sibling Count"] || 0);
+
+        for (let i = 1; i <= siblingsCount; i++) {
+          const studyingValue =
+            sibling.fields[
+            i === 1 ? "Sibling Studying" : `Sibling Studying ${i}`
+            ];
+
+          siblingsDetails.push({
+            name:
+              sibling.fields[i === 1 ? "Sibling Name" : `Sibling Name ${i}`] || "",
+            age: Number(
+              sibling.fields[i === 1 ? "Sibling Age" : `Sibling Age ${i}`] || 0
+            ),
+            status: mapSiblingStatus(studyingValue),
+          });
+        }
+      }
+
+      await Student.findOneAndUpdate(
+        { applicationId: app.applicationId },
+        {
+          $set: {
+            bloodGroup,
+            hostelWilling,
+            siblingsCount,
+            siblingsDetails,
+          },
+        },
+        { new: true }
+      );
+    }
+
+
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Academic year updated successfully in students",
+    });
+  } catch (error: any) {
+    console.error("❌ Update error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 
