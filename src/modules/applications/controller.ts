@@ -301,6 +301,45 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const personalSection = personalDetails.find(
+      (s: any) => s.sectionName === "Personal Details"
+    );
+
+    const siblingSection = personalDetails.find(
+      (s: any) => s.sectionName === "Sibling Details"
+    );
+
+    const bloodGroup = personalSection?.fields?.["Blood Group"] || "";
+    const hostelWilling =
+      personalSection?.fields?.["Hostel Required"] === "Yes";
+
+    let siblingsCount = 0;
+    let siblingsDetails: any[] = [];
+
+    if (siblingSection?.fields) {
+      siblingsCount = Number(siblingSection.fields["Sibling Count"] || 0);
+
+      for (let i = 1; i <= siblingsCount; i++) {
+        const studyingValue =
+          siblingSection.fields[
+          i === 1 ? "Sibling Studying" : `Sibling Studying ${i}`
+          ];
+
+        siblingsDetails.push({
+          name:
+            siblingSection.fields[
+            i === 1 ? "Sibling Name" : `Sibling Name ${i}`
+            ] || "",
+          age: Number(
+            siblingSection.fields[
+            i === 1 ? "Sibling Age" : `Sibling Age ${i}`
+            ] || 0
+          ),
+          status: mapSiblingStatus(studyingValue),
+        });
+      }
+    }
+
 
     let leadStatus = "New";
 
@@ -325,6 +364,10 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       instituteId,
       password: plainPassword,
       status: "active",
+      bloodGroup,
+      hostelWilling,
+      siblingsCount,
+      siblingsDetails,
     });
 
     await sendPasswordEmail(email, firstname, plainPassword);
@@ -484,6 +527,48 @@ export const createApplicationByStudent = async (
         .filter(Boolean)
         .join(" ");
 
+    let bloodGroup = "";
+    let hostelWilling = false;
+    let siblingsCount = 0;
+    let siblingsDetails: any[] = [];
+
+    const personalSection = personalDetails.find(
+      (s: any) => s.sectionName === "Personal Details"
+    );
+
+    const siblingSection = personalDetails.find(
+      (s: any) => s.sectionName === "Sibling Details"
+    );
+
+    bloodGroup = personalSection?.fields?.["Blood Group"] || "";
+    hostelWilling =
+      personalSection?.fields?.["Hostel Required"] === "Yes";
+
+    if (siblingSection?.fields) {
+      siblingsCount = Number(siblingSection.fields["Sibling Count"] || 0);
+
+      for (let i = 1; i <= siblingsCount; i++) {
+        const studyingValue =
+          siblingSection.fields[
+          i === 1 ? "Sibling Studying" : `Sibling Studying ${i}`
+          ];
+
+        siblingsDetails.push({
+          name:
+            siblingSection.fields[
+            i === 1 ? "Sibling Name" : `Sibling Name ${i}`
+            ] || "",
+          age: Number(
+            siblingSection.fields[
+            i === 1 ? "Sibling Age" : `Sibling Age ${i}`
+            ] || 0
+          ),
+          status: mapSiblingStatus(studyingValue),
+        });
+      }
+    }
+
+
     let application;
 
     if (student.applicationId) {
@@ -503,6 +588,8 @@ export const createApplicationByStudent = async (
         hasPersonalDetails && hasEducationDetails
           ? "Complete"
           : "Incomplete";
+
+
 
       application = await Application.findOneAndUpdate(
         { applicationId: student.applicationId },
@@ -531,7 +618,11 @@ export const createApplicationByStudent = async (
       student.state = state;
       student.city = city;
       student.academicYear = academicYear;
-      student.interactions = application?.interactions
+      student.interactions = application?.interactions;
+      student.bloodGroup = bloodGroup;
+      student.hostelWilling = hostelWilling;
+      student.siblingsCount = siblingsCount;
+      student.siblingsDetails = siblingsDetails;
       await student.save();
     } else {
       // ✅ Create new application
@@ -560,6 +651,10 @@ export const createApplicationByStudent = async (
       student.state = state;
       student.city = city;
       student.interactions = "New"
+      student.bloodGroup = bloodGroup;
+      student.hostelWilling = hostelWilling;
+      student.siblingsCount = siblingsCount;
+      student.siblingsDetails = siblingsDetails;
       student.academicYear = academicYear;
       await student.save();
     }
@@ -872,6 +967,45 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const personalSection = personalDetails.find(
+      (s: any) => s.sectionName === "Personal Details"
+    );
+
+    const siblingSection = personalDetails.find(
+      (s: any) => s.sectionName === "Sibling Details"
+    );
+
+    const bloodGroup = personalSection?.fields?.["Blood Group"] || "";
+    const hostelWilling =
+      personalSection?.fields?.["Hostel Required"] === "Yes";
+
+    let siblingsCount = 0;
+    let siblingsDetails: any[] = [];
+
+    if (siblingSection?.fields) {
+      siblingsCount = Number(siblingSection.fields["Sibling Count"] || 0);
+
+      for (let i = 1; i <= siblingsCount; i++) {
+        const studyingValue =
+          siblingSection.fields[
+          i === 1 ? "Sibling Studying" : `Sibling Studying ${i}`
+          ];
+
+        siblingsDetails.push({
+          name:
+            siblingSection.fields[
+            i === 1 ? "Sibling Name" : `Sibling Name ${i}`
+            ] || "",
+          age: Number(
+            siblingSection.fields[
+            i === 1 ? "Sibling Age" : `Sibling Age ${i}`
+            ] || 0
+          ),
+          status: mapSiblingStatus(studyingValue),
+        });
+      }
+    }
+
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
       [
@@ -908,6 +1042,10 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         city: application.city,
         academicYear: application.academicYear,
         interactions: application.interactions,
+        bloodGroup,
+        hostelWilling,
+        siblingsCount,
+        siblingsDetails,
       },
       { new: true }
     );
