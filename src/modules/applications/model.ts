@@ -27,6 +27,7 @@ export interface IApplication extends Document {
   status: "Pending" | "Approved" | "Rejected";
   formStatus?: "Incomplete" | "Complete";
   interactions?: string;
+  searchText?: string;
   submittedAt: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -79,6 +80,12 @@ const ApplicationSchema = new Schema<IApplication>(
       type: String,
       enum: ["Incomplete", "Complete"],
       default: "Complete", // still safe
+
+    },
+    searchText: {
+      type: String,
+      default: "",
+      index: true,
     },
 
     status: {

@@ -57,7 +57,7 @@ const StudentSchema = new Schema<IStudent>(
     city: { type: String, },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     admissionQuota: { type: String },
-    admissionUniversityRegNo: { type: String, unique: true,},
+    admissionUniversityRegNo: { type: String, unique: true},
     internshipType: { type: String },
     internshipCompany: { type: String },
     internshipDuration: { type: String },

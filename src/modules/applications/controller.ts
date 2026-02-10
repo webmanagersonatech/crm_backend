@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import Application from './model'
 import { createApplicationSchema } from './application.sanitize'
 import { AuthRequest } from '../../middlewares/auth'
-
+import formmanager from '../form-manage/model'
 import Student from '../students/model'
 import LeadModel from '../lead/model'
 import crypto from "crypto";
@@ -23,6 +23,69 @@ const mapSiblingStatus = (value: string) => {
   if (!value) return "none";
   return value.toLowerCase() === "yes" ? "studying" : "none";
 };
+
+const buildSearchTextFromSections = (
+  personalDetails: any[],
+  educationDetails: any[]
+): string => {
+  const tokens: string[] = [];
+
+  const addField = (label: string, value: any) => {
+    if (value === null || value === undefined) return;
+
+    if (Array.isArray(value)) {
+      // Include even if empty array
+      tokens.push(`${label}:${value.map(v => String(v).toLowerCase().trim()).join(",")}`);
+    } else if (value !== "") {
+      // Include non-empty strings and numbers
+      tokens.push(`${label}:${String(value).toLowerCase().trim()}`);
+    } else {
+      // For empty string, still include with empty value
+      tokens.push(`${label}:`);
+    }
+  };
+
+  const processSections = (sections: any[]) => {
+    sections.forEach((section) => {
+      Object.entries(section.fields || {}).forEach(([key, value]) => {
+        // Convert key to lowercase and remove spaces
+        const label = key.replace(/\s+/g, "").toLowerCase();
+        addField(label, value);
+      });
+    });
+  };
+
+  processSections(personalDetails);
+  processSections(educationDetails);
+
+  return tokens.join(" ");
+};
+
+
+
+const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number"];
+
+const extractKeyOptionsForFilter = (sections: any[]) => {
+  const result: any[] = [];
+
+  sections.forEach(section => {
+    section.fields.forEach((field: any) => {
+      // 🚫 Ignore file & textarea
+      if (!ALLOWED_FILTER_TYPES.includes(field.type)) return;
+
+      result.push({
+        key: field.fieldName,
+        label: field.label,
+        type: field.type,
+        options: field.options || [],
+        multiple: field.multiple || false
+      });
+    });
+  });
+
+  return result;
+};
+
 
 
 const extractAddress = (personalDetails: any[]) => {
@@ -300,6 +363,11 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         ,
       });
     }
+    // 🔍 BUILD SEARCH TEXT (AUTO)
+    const searchText = buildSearchTextFromSections(
+      personalDetails,
+      educationDetails
+    );
 
     const personalSection = personalDetails.find(
       (s: any) => s.sectionName === "Personal Details"
@@ -400,6 +468,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       studentId: student.studentId,
       paymentStatus: "Unpaid",
       status: "Pending",
+      searchText,
     });
 
     // Link student and lead
@@ -427,8 +496,6 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       .json({ success: false, message: error.message });
   }
 };
-
-
 
 export const createApplicationByStudent = async (
   req: StudentAuthRequest,
@@ -1015,6 +1082,10 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         .filter(Boolean)
         .join(" ")
 
+    const searchText = buildSearchTextFromSections(
+      personalDetails,
+      educationDetails
+    );
 
 
 
@@ -1028,6 +1099,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.city = city ?? application.city;
     application.educationDetails = educationDetails
     application.applicantName = applicantName || application.applicantName
+    application.searchText = searchText
 
     await application.save()
 
@@ -1205,6 +1277,35 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       }
       filter.createdAt = dateFilter;
     }
+
+    // 🔍 Global dynamic search (searchText)
+    if (req.query.q) {
+      const raw = String(req.query.q).toLowerCase().trim();
+      const tokens = raw.split(/\s+/);
+
+      const grouped: Record<string, string[]> = {};
+
+      tokens.forEach(t => {
+        const [key, value] = t.split(":");
+        if (!key || !value) return;
+
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(value);
+      });
+
+      filter.$and = Object.entries(grouped).map(
+        ([key, values]) => ({
+          $or: values.map(v => ({
+            searchText: {
+              $regex: `${key}:${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+              $options: "i",
+            }
+          }))
+        })
+      );
+    }
+
+
     const page = Number(req.query.page) || 1
     const limit = Number(req.query.limit) || 10
     const options = {
@@ -1233,6 +1334,22 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     const academicYears = await Application.distinct("academicYear", yearFilter)
 
+    const formkeyvalues = await formmanager.find({
+      instituteId: filter.instituteId
+    });
+
+    let personalDetailsKeyValues: any[] = [];
+    let educationDetailsKeyValues: any[] = [];
+    if (formkeyvalues.length) {
+      const form = formkeyvalues[0];
+
+      personalDetailsKeyValues =
+        extractKeyOptionsForFilter(form.personalDetails || []);
+
+      educationDetailsKeyValues =
+        extractKeyOptionsForFilter(form.educationDetails || []);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Applications fetched successfully',
@@ -1243,7 +1360,11 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
         limit: applications.limit
       },
       data: applications.docs,
-      academicYears
+      academicYears,
+      filters: {
+        personalDetails: personalDetailsKeyValues,
+        educationDetails: educationDetailsKeyValues
+      }
     })
   } catch (error: any) {
     console.error('Error fetching applications:', error)
@@ -1289,7 +1410,7 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
   }
 };
 
-export const updateAcademicYearInMatchedApplicationStudent = async (req: AuthRequest, res: Response) => {
+export const updateAcademicYearInMatchedApplicationStudentx = async (req: AuthRequest, res: Response) => {
   try {
     // 1️⃣ Fetch all applications
     const applications = await Application.find();
@@ -1360,5 +1481,77 @@ export const updateAcademicYearInMatchedApplicationStudent = async (req: AuthReq
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+export const updateAcademicYearInMatchedApplicationStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    const applications = await Application.find();
+
+    if (!applications.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No applications found",
+      });
+    }
+
+    let updated = 0;
+
+    for (const app of applications) {
+      const searchText = buildSearchTextFromSections(
+        app.personalDetails || [],
+        app.educationDetails || []
+      );
+
+      const result = await Application.updateOne(
+        { _id: app._id },
+        { $set: { searchText } }
+      );
+
+      if (result.modifiedCount > 0) updated++;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Search text rebuilt successfully",
+      updatedRecords: updated,
+    });
+  } catch (error: any) {
+    console.error("❌ Update error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+export const findUnmatchedStudentId = async (req: AuthRequest, res: Response) => {
+  try {
+    // 1. get all studentIds from Student collection
+    const students = await Student.find({}, { studentId: 1, _id: 0 });
+    const studentIdSet = new Set(students.map(s => s.studentId));
+
+    // 2. get all applications
+    const applications = await Application.find({}, { studentId: 1 });
+
+    // 3. find unmatched
+    const unmatchedApplications = applications.filter(
+      app => !studentIdSet.has(app.studentId)
+    );
+
+    return res.status(200).json({
+      success: true,
+      totalApplications: applications.length,
+      totalStudents: students.length,
+      unmatchedCount: unmatchedApplications.length,
+      unmatchedStudentIds: unmatchedApplications.map(a => a.studentId),
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
 
 
