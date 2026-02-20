@@ -4,7 +4,35 @@ import User from '../auth/auth.model';
 import { createLeadSchema } from './lead.sanitize';
 import Application from '../applications/model';
 import { AuthRequest } from '../../middlewares/auth';
-import Student from '../students/model'
+import multer from "multer";
+import fs from "fs";
+import csv from "csv-parser";
+import path from "path";
+import Student from '../students/model';
+
+const upload = multer({
+  dest: "uploads/",
+});
+const generateLeadId = async (instituteId: string) => {
+  const random = Math.random().toString(16).substring(2, 8).toUpperCase();
+  return `${instituteId}-LE-${random}`;
+};
+const generateUniqueLeadId = async (instituteId: string) => {
+  let leadId;
+  let exists = true;
+
+  while (exists) {
+    const random = Math.random().toString(16).substring(2, 8).toUpperCase();
+    leadId = `${instituteId}-LE-${random}`;
+
+    const existing = await Lead.findOne({ leadId });
+    if (!existing) {
+      exists = false;
+    }
+  }
+
+  return leadId;
+};
 
 export const createLead = async (req: AuthRequest, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
@@ -76,6 +104,247 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   res.json(lead);
 };
+// Bulk Upload Controller
+export const bulkUploadLeads = async (req: any, res: any) => {
+  let filePath: string | null = null;
+
+  try {
+    // ============================
+    // ✅ BASIC VALIDATION
+    // ============================
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "CSV file required",
+      });
+    }
+
+    const createdBy = req.user?.id;
+    const instituteId = req.user?.instituteId;
+
+    if (!createdBy || !instituteId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    filePath = path.resolve(req.file.path);
+    const rows: any[] = [];
+
+    // ============================
+    // ✅ READ CSV
+    // ============================
+
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(filePath!)
+        .pipe(csv())
+        .on("data", (data) => rows.push(data))
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    if (!rows.length) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: "CSV is empty",
+      });
+    }
+
+    // ============================
+    // ✅ HELPER: SAFE DATE PARSER
+    // ============================
+
+    const parseValidDate = (value: any): Date | null => {
+      if (!value || value === "") return null;
+
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? null : date;
+    };
+
+    // ============================
+    // ✅ STEP 1: SHEET VALIDATION
+    // ============================
+
+    const errors: { row: number; field: string; message: string }[] = [];
+    const phoneMap = new Map<string, number[]>();
+
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+
+      let phone = row.phoneNumber?.toString().trim();
+
+      if (!phone) {
+        errors.push({
+          row: rowNumber,
+          field: "phoneNumber",
+          message: "Phone number is required",
+        });
+        return;
+      }
+
+      // Remove non-digits
+      phone = phone.replace(/\D/g, "");
+
+      if (phone.length !== 10) {
+        errors.push({
+          row: rowNumber,
+          field: "phoneNumber",
+          message: "Phone number must be exactly 10 digits",
+        });
+        return;
+      }
+
+      row.phoneNumber = phone;
+
+      if (!row.candidateName || row.candidateName.trim() === "") {
+        errors.push({
+          row: rowNumber,
+          field: "candidateName",
+          message: "Candidate name is required",
+        });
+      }
+
+      // Track duplicates inside sheet
+      if (!phoneMap.has(phone)) {
+        phoneMap.set(phone, []);
+      }
+      phoneMap.get(phone)!.push(rowNumber);
+    });
+
+    // Sheet duplicate check
+    phoneMap.forEach((rowsList, phone) => {
+      if (rowsList.length > 1) {
+        rowsList.forEach((r) => {
+          errors.push({
+            row: r,
+            field: "phoneNumber",
+            message: `Duplicate phone number in sheet (${phone})`,
+          });
+        });
+      }
+    });
+
+    if (errors.length > 0) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: "Sheet validation failed",
+        errors,
+      });
+    }
+
+    // ============================
+    // ✅ STEP 2: CHECK DB DUPLICATES
+    // ============================
+
+    const phoneNumbers = rows.map((r) => r.phoneNumber);
+
+    const existingLeads = await Lead.find({
+      phoneNumber: { $in: phoneNumbers },
+      instituteId,
+    }).select("phoneNumber leadId");
+
+    const existingMap = new Map<string, string[]>();
+
+    existingLeads.forEach((lead: any) => {
+      if (!existingMap.has(lead.phoneNumber)) {
+        existingMap.set(lead.phoneNumber, []);
+      }
+      existingMap.get(lead.phoneNumber)!.push(lead.leadId);
+    });
+
+    // ============================
+    // ✅ STEP 3: PREPARE INSERT DATA
+    // ============================
+
+    const leadsToInsert = [];
+
+    for (const row of rows) {
+      const isDuplicate = existingMap.has(row.phoneNumber);
+
+      const duplicateReason = isDuplicate
+        ? `Duplicate phone exists. Lead IDs: ${existingMap
+          .get(row.phoneNumber)
+          ?.join(", ")}`
+        : null;
+
+      const leadId = await generateUniqueLeadId(instituteId);
+
+      const safeDOB = parseValidDate(row.dateOfBirth);
+      const safeFollowUpDate = parseValidDate(row.followUpDate);
+
+      const followUp = {
+        status: row.status || "New",
+        communication: row.communication || "Offline",
+        followUpDate: safeFollowUpDate,
+        description: row.description || "",
+        calltaken: row.counsellorName || "",
+      };
+
+      leadsToInsert.push({
+        leadId,
+        instituteId,
+        program: row.program || "",
+        candidateName: row.candidateName.trim(),
+        ugDegree: row.ugDegree || "",
+        phoneNumber: row.phoneNumber,
+        email: row.email || "",
+        dateOfBirth: safeDOB,
+        country: row.country || "",
+        state: row.state || "",
+        city: row.city || "",
+        counsellorName: row.counsellorName || "",
+        leadSource: row.leadSource || "offline",
+        status: row.status || "New",
+        communication: row.communication || "Offline",
+        followUpDate: safeFollowUpDate,
+        description: row.description || "",
+        followups: [followUp],
+        createdBy,
+        isduplicate: isDuplicate,
+        duplicateReason,
+      });
+    }
+
+    // ============================
+    // ✅ STEP 4: INSERT SAFELY
+    // ============================
+
+    const insertedLeads = await Lead.insertMany(leadsToInsert, {
+      ordered: false, // prevents stopping on first error
+    });
+
+    fs.unlinkSync(filePath);
+
+    return res.json({
+      success: true,
+      message: "Bulk upload completed successfully 🚀",
+      totalRows: rows.length,
+      inserted: insertedLeads.length,
+      duplicatesInSystem: existingLeads.length,
+    });
+
+  } catch (error) {
+    console.error("Bulk Upload Error:", error);
+
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Bulk upload failed",
+    });
+  }
+};
+
+
+
+
+
 
 // export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
 //   const { error, value } = createLeadSchema.validate(req.body);
@@ -186,6 +455,10 @@ export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+// Export middleware
+export const uploadMiddleware = upload.single("file");
+
 
 
 

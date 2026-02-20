@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { createLead, listLeads, getLead, updateLead, deleteLead, createLeadfromonline } from './controller';
+import { createLead, listLeads, getLead, updateLead, deleteLead, createLeadfromonline,bulkUploadLeads, uploadMiddleware } from './controller';
 import { protect } from '../../middlewares/auth';
 
 const router = Router();
-
+router.post("/bulk-upload", protect, uploadMiddleware, bulkUploadLeads);
 router.get('/', protect, listLeads);
 router.post('/', protect, createLead);
 router.post('/enquiry', createLeadfromonline);

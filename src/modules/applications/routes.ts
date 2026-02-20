@@ -13,16 +13,58 @@ import {
     getApplicationByStudents,
     sendSMS,
     updateAcademicYearInMatchedApplicationStudent,
-    findUnmatchedStudentId
+    findUnmatchedStudentId,
+    bulkUploadApplications,
+    findUnmatchedStudentIds
 } from './controller'
 import { protect } from '../../middlewares/auth'
 import { studentProtect } from "../../middlewares/studentAuth";
 import { upload } from "./multerConfig";
 
+import multer, { FileFilterCallback } from "multer";
+
 const router = Router()
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, "uploads/");
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + "-" + file.originalname);
+    },
+});
+
+/* ✅ Proper TS fileFilter */
+const fileFilter = (
+    req: Express.Request,
+    file: Express.Multer.File,
+    cb: FileFilterCallback
+) => {
+    const allowedTypes = [
+        "text/csv",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error("Only CSV and Excel files are allowed."));
+    }
+};
+
+const bulkUpload = multer({
+    storage,
+    fileFilter,
+});
+router.post(
+    "/bulk-upload",
+    protect,
+    bulkUpload.single("file"),
+    bulkUploadApplications
+);
 
 router.post("/", protect, upload.any(), createApplication);
-router.post("/updateacadamicyear",  updateAcademicYearInMatchedApplicationStudent);
+router.post("/updateacadamicyear", updateAcademicYearInMatchedApplicationStudent);
 router.post("/sms", sendSMS);
 router.post("/student", studentProtect, upload.any(), createApplicationByStudent);
 router.get("/student/:applicationId", studentProtect, getApplicationByStudent);

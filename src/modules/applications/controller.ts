@@ -9,7 +9,8 @@ import crypto from "crypto";
 import { StudentAuthRequest } from '../../middlewares/studentAuth'
 import Settings from '../settings/model'
 import emailtemplates from '../email-templates/model';
-
+import fs from "fs";
+import csv from "csv-parser";
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -496,6 +497,194 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       .json({ success: false, message: error.message });
   }
 };
+
+
+
+
+
+
+export const bulkUploadApplications = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "CSV file required",
+      });
+    }
+
+    const instituteId = req.user?.instituteId;
+    if (!instituteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Institute not found",
+      });
+    }
+
+    const formConfig = await formmanager.findOne({ instituteId });
+    if (!formConfig) {
+      return res.status(400).json({
+        success: false,
+        message: "Form configuration not found",
+      });
+    }
+
+    const rows: any[] = [];
+
+    // ===========================
+    // 🔥 READ CSV (Promise Safe)
+    // ===========================
+    await new Promise<void>((resolve, reject) => {
+      fs.createReadStream(file.path)
+        .pipe(csv())
+        .on("data", (data) => {
+          const cleanedRow: any = {};
+
+          Object.keys(data).forEach((key) => {
+            const cleanKey = key.trim();
+            cleanedRow[cleanKey] = data[key]?.toString().trim();
+          });
+
+          rows.push(cleanedRow);
+        })
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    // ===========================
+    // 🔥 STRONG NORMALIZER
+    // ===========================
+    const normalize = (value: string) =>
+      value
+        ?.toString()
+        .toLowerCase()
+        .replace(/\s+/g, "")   // remove spaces
+        .replace(/[_-]/g, "")  // remove _ and -
+        .trim();
+
+    let successCount = 0;
+    const failed: any[] = [];
+
+    // ===========================
+    // 🔥 PROCESS ONE BY ONE
+    // ===========================
+    for (const row of rows) {
+      try {
+        // Build header map once per row
+        const headerMap: any = {};
+        Object.keys(row).forEach((key) => {
+          headerMap[normalize(key)] = row[key];
+        });
+
+        const getCsvValue = (fieldName: string) => {
+          return headerMap[normalize(fieldName)];
+        };
+
+        const buildSection = (sections: any[]) => {
+          return sections.map((section) => {
+            const sectionFields: any = {};
+
+            section.fields.forEach((field: any) => {
+              const csvValue = getCsvValue(field.fieldName);
+
+              if (csvValue !== undefined && csvValue !== "") {
+                if (
+                  field.type === "select" &&
+                  field.options?.length &&
+                  !field.options.includes(csvValue)
+                ) {
+                  throw new Error(
+                    `Invalid option '${csvValue}' for ${field.fieldName}`
+                  );
+                }
+
+                sectionFields[field.fieldName] = csvValue;
+              }
+            });
+
+            return {
+              sectionName: section.sectionName,
+              fields: sectionFields,
+            };
+          });
+        };
+
+        const applicantName =
+          getCsvValue("Full Name") ||
+          getCsvValue("Applicant Name");
+
+        if (!applicantName) {
+          throw new Error("Applicant Name is required");
+        }
+
+        const email = getCsvValue("Email Address");
+        const mobile = getCsvValue("Contact Number");
+
+        const academicYear =
+          getCsvValue("Academic Year") ||
+          getCsvValue("academicYear");
+
+        if (!academicYear) {
+          throw new Error("Academic Year is required");
+        }
+
+        await Application.create({
+          instituteId,
+          program: getCsvValue("Program"),
+          academicYear,
+          applicantName,
+          country: getCsvValue("Country"),
+          state: getCsvValue("State"),
+          city: getCsvValue("City"),
+          personalDetails: buildSection(
+            formConfig.personalDetails || []
+          ),
+          educationDetails: buildSection(
+            formConfig.educationDetails || []
+          ),
+          paymentStatus: "Unpaid",
+          status: "Pending",
+          interactions: "Admitted",
+ 
+        });
+
+        successCount++;
+      } catch (err: any) {
+        failed.push({
+          row,
+          error: err.message,
+        });
+      }
+    }
+
+    // ===========================
+    // 🔥 DELETE TEMP FILE
+    // ===========================
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    return res.status(200).json({
+      success: true,
+      uploaded: successCount,
+      failed: failed.length,
+      failedData: failed,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+
+
 
 export const createApplicationByStudent = async (
   req: StudentAuthRequest,
@@ -1550,7 +1739,43 @@ export const findUnmatchedStudentId = async (req: AuthRequest, res: Response) =>
       message: error.message,
     });
   }
+
 };
+
+export const findUnmatchedStudentIds = async (req: AuthRequest, res: Response) => {
+  try {
+    // 1️⃣ Get all applicationIds from Application collection
+    const applications = await Application.find({}, { applicationId: 1, _id: 0 });
+    const applicationIdSet = new Set(applications.map(a => a.applicationId));
+
+    // 2️⃣ Get all students
+    const students = await Student.find({}, { studentId: 1, applicationId: 1, _id: 0 });
+
+    // 3️⃣ Find students whose applicationId not in Application collection
+    const unmatchedStudents = students.filter(
+      (s: any) => !applicationIdSet.has(s.applicationId)
+    );
+
+    return res.status(200).json({
+      success: true,
+      totalApplications: applications.length,
+      totalStudents: students.length,
+      unmatchedCount: unmatchedStudents.length,
+      unmatchedStudents: unmatchedStudents.map(s => ({
+        studentId: s.studentId,
+        applicationId: s.applicationId
+      })),
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 
 
 
