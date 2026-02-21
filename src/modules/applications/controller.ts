@@ -64,7 +64,7 @@ const buildSearchTextFromSections = (
 
 
 
-const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number"];
+const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number", "email"];
 
 const extractKeyOptionsForFilter = (sections: any[]) => {
   const result: any[] = [];
