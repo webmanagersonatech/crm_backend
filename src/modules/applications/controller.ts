@@ -227,7 +227,6 @@ export const sendSMS = async (req: AuthRequest, res: Response) => {
         message: "recipientNumber and message are required in payload",
       });
     }
-
     const sendSms = new SibApiV3Sdk.SendTransacSms();
     sendSms.sender = "TESTSMS"; // Replace with your Brevo sender ID
     sendSms.recipient = recipientNumber; // e.g., +919XXXXXXXXX
@@ -1582,6 +1581,123 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     })
   } catch (error: any) {
     console.error('Error fetching applications:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const exportApplications = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user
+    if (!user) return res.status(401).json({ message: 'Not authorized' })
+
+    let filter: any = {}
+
+    if (user.role === 'superadmin') {
+      filter = {}
+    } else if (user.role === 'admin') {
+      filter = { instituteId: user.instituteId }
+    } else if (user.role === 'user') {
+      filter = { instituteId: user.instituteId, userId: user._id }
+    }
+
+    // 🎯 Optional filters (same filtering logic as listApplications)
+    if (req.query.academicYear) filter.academicYear = req.query.academicYear
+    if (req.query.instituteId) filter.instituteId = req.query.instituteId
+    if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
+    if (req.query.formStatus) {
+      filter.formStatus = req.query.formStatus;
+    }
+
+    if (req.query.applicationId) {
+      filter.applicationId = { $regex: req.query.applicationId, $options: "i" };
+    }
+
+    if (req.query.applicantName) {
+      filter.applicantName = { $regex: req.query.applicantName, $options: "i" };
+    }
+    if (req.query.program) {
+      filter.program = {
+        $regex: req.query.program,
+        $options: "i",
+      };
+    }
+
+    if (req.query.country) filter.country = req.query.country;
+    if (req.query.state) filter.state = req.query.state;
+    if (req.query.city) {
+      if (Array.isArray(req.query.city)) {
+        filter.city = { $in: req.query.city };
+      } else {
+        filter.city = req.query.city;
+      }
+    }
+
+    if (req.query.applicationSource) filter.applicationSource = req.query.applicationSource;
+    if (req.query.interactions) filter.interactions = req.query.interactions;
+
+    if (req.query.startDate || req.query.endDate) {
+      const dateFilter: any = {};
+
+      if (req.query.startDate) {
+        const start = new Date(req.query.startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (req.query.endDate) {
+        const end = new Date(req.query.endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+      filter.createdAt = dateFilter;
+    }
+
+    if (req.query.q) {
+      const raw = String(req.query.q).toLowerCase().trim();
+      const tokens = raw.split(/\s+/);
+
+      const grouped: Record<string, string[]> = {};
+
+      tokens.forEach(t => {
+        const [key, value] = t.split(":");
+        if (!key || !value) return;
+
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(value);
+      });
+
+      filter.$and = Object.entries(grouped).map(
+        ([key, values]) => ({
+          $or: values.map(v => ({
+            searchText: {
+              $regex: `${key}:${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+              $options: "i",
+            }
+          }))
+        })
+      );
+    }
+
+
+    const applications = await Application.find(filter)
+      .sort({ createdAt: -1 })
+      .populate([
+        { path: 'institute', select: 'name' },
+        {
+          path: "lead",
+          select: "_id",
+        },
+      ]);
+
+
+    res.status(200).json({
+      success: true,
+      message: 'Applications exported successfully',
+      data: applications,
+      totalCount: applications.length
+    })
+  } catch (error: any) {
+    console.error('Error exporting applications:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 }

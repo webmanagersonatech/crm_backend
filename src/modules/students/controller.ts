@@ -256,6 +256,105 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+export const exportStudents = async (req: AuthRequest, res: Response) => {
+  try {
+    // Search
+    const search = (req.query.search as string) || "";
+
+    // Status filter
+    const status = (req.query.status as string) || "all";
+
+    // Filters from frontend
+    const bloodGroup = (req.query.bloodGroup as string) || "all";
+    const bloodDonate = (req.query.bloodDonate as string) || "all";
+    const hostelWilling = (req.query.hostelWilling as string) || "all";
+    const quota = (req.query.quota as string) || "all";
+    const feedbackRating = (req.query.feedbackRating as string) || "all";
+    const familyOccupation = (req.query.familyOccupation as string) || "all";
+    const academicYear = (req.query.academicYear as string) || "all";
+
+    // Location filters
+    const country = (req.query.country as string) || "all";
+    const state = (req.query.state as string) || "all";
+    const city = req.query.city || "all";
+
+    // Role-based access
+    const userRole = req.user.role;
+    const query: any = {};
+
+    if (userRole === "superadmin") {
+      const instituteId = (req.query.instituteId as string) || "all";
+      if (instituteId !== "all") query.instituteId = instituteId;
+    } else if (userRole === "admin") {
+      query.instituteId = req.user.instituteId;
+    } else {
+      return res.status(403).json({
+        status: false,
+        message: "You are not authorized to view students",
+      });
+    }
+
+    // Text search
+    if (search.trim()) {
+      query.$or = [
+        { firstname: { $regex: search, $options: "i" } },
+        { lastname: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { studentId: { $regex: search, $options: "i" } },
+        { admissionUniversityRegNo: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Status filter
+    if (status !== "all") query.status = status;
+
+    // Corrected Filters
+    if (bloodGroup !== "all") query.bloodGroup = bloodGroup;
+    if (bloodDonate !== "all") query.bloodWilling = bloodDonate === "true";
+    if (hostelWilling !== "all") query.hostelWilling = hostelWilling === "yes";
+    if (quota !== "all") query.admissionQuota = quota;
+    if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
+    if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
+    if (academicYear !== "all") query.academicYear = academicYear;
+
+    // Location filters
+    if (country !== "all") query.country = country;
+    if (state !== "all") query.state = state;
+
+    if (city !== "all") {
+      if (Array.isArray(city)) {
+        query.city = { $in: city };
+      } else {
+        query.city = city;
+      }
+    }
+
+    query.interactions = "Admitted";
+
+    // 📦 Get ALL students without pagination
+    const students = await Student.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .populate([
+        { path: "application", select: "_id" },
+        { path: "institute", select: "name" }
+      ]);
+
+    return res.status(200).json({
+      status: true,
+      message: 'Students exported successfully',
+      data: students,
+      totalCount: students.length
+    });
+
+  } catch (err: any) {
+    console.error("Export Students Error:", err);
+    return res.status(500).json({
+      status: false,
+      message: err.message || "Server error",
+    });
+  }
+};
 
 export const uploadStudentImageByAdmin = async (req: Request, res: Response) => {
   try {
@@ -297,7 +396,7 @@ export const uploadStudentImageByAdmin = async (req: Request, res: Response) => 
       success: true,
       message: 'Student image uploaded successfully',
       data: {
-        filename: file.filename 
+        filename: file.filename
       }
     });
 
@@ -339,7 +438,7 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    console.log(updates,"updates")
+
 
     // Remove empty enum values to avoid validation errors
     if (updates.feedbackRating === "") delete updates.feedbackRating;

@@ -12,6 +12,7 @@ import {
     changePassword,
     getLoggedInStudent,
     deleteStudent,
+    exportStudents,
     updateStudentCleanupData,
     uploadStudentImageByAdmin
 } from "./controller";
@@ -26,6 +27,7 @@ router.post(
     uploadStudentImageByAdmin
 );
 router.post("/login", studentLogin);
+router.get('/export', protect, exportStudents);
 router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
 router.get("/", protect, listStudents);
 router.get("/:id", getStudent);

@@ -343,9 +343,6 @@ export const bulkUploadLeads = async (req: any, res: any) => {
 
 
 
-
-
-
 // export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
 //   const { error, value } = createLeadSchema.validate(req.body);
 //   if (error) {
@@ -560,7 +557,109 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const exportLeads = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      instituteId,
+      status,
+      candidateName,
+      communication,
+      startDate,
+      endDate,
+      userId,
+      phoneNumber,
+      leadId,
+      country,
+      state,
+      city,
+      leadSource,
+    } = req.query;
 
+    const user = req.user;
+
+    let filter: any = {};
+
+    // 🔹 Role-based filters
+    if (user.role === "superadmin") {
+      if (instituteId) filter.instituteId = instituteId;
+    } else if (user.role === "admin") {
+      filter.instituteId = user.instituteId;
+    } else if (user.role === "user") {
+      filter = { instituteId: user.instituteId, createdBy: user.id };
+    }
+
+    // 🔹 Optional filters
+    if (leadSource) filter.leadSource = leadSource;
+    if (status) filter.status = status;
+    if (country) filter.country = country;
+    if (state) filter.state = state;
+    if (city) {
+      if (Array.isArray(city)) {
+        filter.city = { $in: city };
+      } else {
+        filter.city = city;
+      }
+    }
+
+    if (communication) filter.communication = communication;
+    if (candidateName) filter.candidateName = { $regex: candidateName, $options: "i" };
+    if (userId && user.role !== "user") {
+      filter.createdBy = userId;
+    }
+
+    // 🔹 Phone number search
+    if (phoneNumber) {
+      filter.phoneNumber = { $regex: phoneNumber, $options: "i" };
+    }
+
+    // 🔹 Lead ID search
+    if (leadId) {
+      filter.leadId = { $regex: leadId, $options: "i" };
+    }
+
+    // 🔹 Date range filter (createdAt between startDate and endDate)
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
+    // 📦 Get ALL leads without pagination
+    const leads = await Lead.find(filter)
+      .sort({ createdAt: -1 })
+      .populate([
+        { path: "creator", select: "firstname lastname instituteId role" },
+        { path: "institute", select: "name" },
+        { path: "application", select: "_id" },
+      ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Leads exported successfully',
+      data: leads,
+      totalCount: leads.length
+    });
+
+  } catch (error: any) {
+    console.error('Error exporting leads:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 
 export const getLead = async (req: Request, res: Response) => {

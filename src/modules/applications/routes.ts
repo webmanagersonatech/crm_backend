@@ -13,6 +13,7 @@ import {
     getApplicationByStudents,
     sendSMS,
     updateAcademicYearInMatchedApplicationStudent,
+    exportApplications,
     findUnmatchedStudentId,
     bulkUploadApplications,
     findUnmatchedStudentIds
@@ -66,6 +67,7 @@ router.post(
 router.post("/", protect, upload.any(), createApplication);
 router.post("/updateacadamicyear", findUnmatchedStudentIds);
 router.post("/sms", sendSMS);
+router.get('/export', protect, exportApplications);
 router.post("/student", studentProtect, upload.any(), createApplicationByStudent);
 router.get("/student/:applicationId", studentProtect, getApplicationByStudent);
 router.get("/getapplicationstudent", studentProtect, getApplicationByStudents);
