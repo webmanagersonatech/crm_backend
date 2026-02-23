@@ -9,6 +9,8 @@ import CryptoJS from "crypto-js";
 import Settings from "../settings/model";
 import FormManage from "../form-manage/model";
 import { AuthRequest } from "../auth";
+import path from 'path';
+import fs from 'fs';
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -255,7 +257,58 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const uploadStudentImageByAdmin = async (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.params;
 
+    // Check if file was uploaded
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file uploaded'
+      });
+    }
+
+    const file = files[0];
+
+    // ✅ Validate file type - Only PNG, WebP, JPEG allowed
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    const isValidMimeType = allowedMimeTypes.includes(file.mimetype);
+    const isValidExtension = allowedExtensions.includes(fileExtension);
+
+    if (!isValidMimeType || !isValidExtension) {
+      // Delete the uploaded file if it's invalid
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file type. Only PNG, WebP, and JPEG images are allowed.'
+      });
+    }
+
+    // ✅ Just return the filename - NO database save!
+    return res.status(200).json({
+      success: true,
+      message: 'Student image uploaded successfully',
+      data: {
+        filename: file.filename 
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error uploading student image by admin:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+};
 
 // Edit student details
 export const updateStudent = async (req: Request, res: Response) => {
@@ -286,6 +339,7 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    console.log(updates,"updates")
 
     // Remove empty enum values to avoid validation errors
     if (updates.feedbackRating === "") delete updates.feedbackRating;

@@ -330,6 +330,10 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
     const email = flattenedPersonalFields["Email Address"];
     const mobileNo = flattenedPersonalFields["Contact Number"];
+    const studentImage = flattenedPersonalFields["Student Image"] ||
+      flattenedPersonalFields["studentImage"] ||
+      flattenedPersonalFields["profileImage"] ||
+      flattenedPersonalFields["Profile Image"];
     const firstname =
       flattenedPersonalFields["Full Name"] ||
       [
@@ -420,7 +424,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     }
     const plainPassword = generatePassword();
 
-    const student = await Student.create({
+    const studentData: any = {
       firstname,
       lastname: flattenedPersonalFields["Last Name"] || "",
       email,
@@ -437,7 +441,14 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       hostelWilling,
       siblingsCount,
       siblingsDetails,
-    });
+    };
+
+    if (studentImage) {
+      studentData.studentImage = studentImage;
+    }
+
+    const student = await Student.create(studentData);
+
 
     await sendPasswordEmail(email, firstname, plainPassword);
 
@@ -648,7 +659,7 @@ export const bulkUploadApplications = async (
           paymentStatus: "Unpaid",
           status: "Pending",
           interactions: "Admitted",
- 
+
         });
 
         successCount++;
@@ -680,10 +691,6 @@ export const bulkUploadApplications = async (
     });
   }
 };
-
-
-
-
 
 
 export const createApplicationByStudent = async (
@@ -753,6 +760,7 @@ export const createApplicationByStudent = async (
     const { country, state, city } = extractAddress(personalDetails);
     const email = flattenedPersonalFields["Email Address"];
     const mobileNo = flattenedPersonalFields["Contact Number"];
+    const studentImage = flattenedPersonalFields["Student Image"];
     const firstname =
       flattenedPersonalFields["Full Name"] ||
       [
@@ -879,6 +887,9 @@ export const createApplicationByStudent = async (
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
+      if (studentImage) {
+        student.studentImage = studentImage;
+      }
       await student.save();
     } else {
       // ✅ Create new application
@@ -912,6 +923,9 @@ export const createApplicationByStudent = async (
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
       student.academicYear = academicYear;
+      if (studentImage) {
+        student.studentImage = studentImage;
+      }
       await student.save();
     }
 
@@ -1188,6 +1202,10 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
 
     const email = flattenedPersonalFields["Email Address"];
     const mobileNo = flattenedPersonalFields["Contact Number"];
+    const studentImage = flattenedPersonalFields["Student Image"] ||
+      flattenedPersonalFields["studentImage"] ||
+      flattenedPersonalFields["profileImage"] ||
+      flattenedPersonalFields["Profile Image"];
     const firstname =
       flattenedPersonalFields["Full Name"] ||
       [
@@ -1292,22 +1310,29 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
 
     await application.save()
 
+    const studentUpdateData: any = {
+      firstname,
+      email,
+      mobileNo,
+      country: application.country,
+      state: application.state,
+      city: application.city,
+      academicYear: application.academicYear,
+      interactions: application.interactions,
+      bloodGroup,
+      hostelWilling,
+      siblingsCount,
+      siblingsDetails,
+    };
+
+    // ✅ Add studentImage only if provided
+    if (studentImage) {
+      studentUpdateData.studentImage = studentImage;
+    }
+
     await Student.findOneAndUpdate(
       { studentId: application.studentId },
-      {
-        firstname,                 // ✅ update name
-        email,                     // ✅ update email
-        mobileNo,                  // ✅ update mobile
-        country: application.country,
-        state: application.state,
-        city: application.city,
-        academicYear: application.academicYear,
-        interactions: application.interactions,
-        bloodGroup,
-        hostelWilling,
-        siblingsCount,
-        siblingsDetails,
-      },
+      studentUpdateData,
       { new: true }
     );
 
@@ -1744,27 +1769,155 @@ export const findUnmatchedStudentId = async (req: AuthRequest, res: Response) =>
 
 export const findUnmatchedStudentIds = async (req: AuthRequest, res: Response) => {
   try {
-    // 1️⃣ Get all applicationIds from Application collection
-    const applications = await Application.find({}, { applicationId: 1, _id: 0 });
-    const applicationIdSet = new Set(applications.map(a => a.applicationId));
+    // Define interfaces for type safety
+    interface StudentInfo {
+      studentId: string;
+      applicationId: string | null;
+      studentName: string;
+    }
 
-    // 2️⃣ Get all students
-    const students = await Student.find({}, { studentId: 1, applicationId: 1, _id: 0 });
+    interface ApplicationInfo {
+      studentId: string | null;
+      applicationId: string | null;
+      applicantName: string;
+    }
 
-    // 3️⃣ Find students whose applicationId not in Application collection
-    const unmatchedStudents = students.filter(
-      (s: any) => !applicationIdSet.has(s.applicationId)
-    );
+    interface MismatchedApplication {
+      studentId: string;
+      applicationId: string;
+      applicantName: string;
+    }
+
+    // Get all applications with their studentId and applicationId
+    const applications = await Application.find({}, {
+      studentId: 1,
+      applicationId: 1,
+      applicantName: 1,
+      _id: 0
+    });
+
+    // Create a Map for quick lookup using composite key (studentId + applicationId)
+    const applicationMap = new Map<string, ApplicationInfo>();
+    applications.forEach((app: any) => {
+      if (app.studentId && app.applicationId) {
+        const key = `${app.studentId}|${app.applicationId}`;
+        applicationMap.set(key, {
+          studentId: app.studentId,
+          applicationId: app.applicationId,
+          applicantName: app.applicantName
+        });
+      }
+    });
+
+    // Get all students with their studentId and applicationId
+    const students = await Student.find({}, {
+      studentId: 1,
+      applicationId: 1,
+      firstname: 1,
+      lastname: 1,
+      _id: 0
+    });
+
+    // Track different types of mismatches with proper types
+    const studentsWithoutApplication: StudentInfo[] = [];
+    const studentsWithMismatchedId: StudentInfo[] = [];
+    const applicationsWithoutStudent: ApplicationInfo[] = [];
+    const applicationsWithMismatchedId: ApplicationInfo[] = [];
+
+    // Check each student against applications
+    students.forEach((student: any) => {
+      if (!student.applicationId) {
+        // Student has no applicationId at all
+        studentsWithoutApplication.push({
+          studentId: student.studentId,
+          applicationId: null,
+          studentName: `${student.firstname || ''} ${student.lastname || ''}`.trim()
+        });
+      } else {
+        const key = `${student.studentId}|${student.applicationId}`;
+        if (!applicationMap.has(key)) {
+          // Student's applicationId doesn't match any application with same studentId
+          studentsWithMismatchedId.push({
+            studentId: student.studentId,
+            applicationId: student.applicationId,
+            studentName: `${student.firstname || ''} ${student.lastname || ''}`.trim()
+          });
+        }
+      }
+    });
+
+    // Check each application against students
+    applications.forEach((app: any) => {
+      if (!app.studentId || !app.applicationId) {
+        // Application missing studentId or applicationId
+        applicationsWithoutStudent.push({
+          studentId: app.studentId || null,
+          applicationId: app.applicationId || null,
+          applicantName: app.applicantName
+        });
+      } else {
+        const studentExists = students.some((s: any) =>
+          s.studentId === app.studentId && s.applicationId === app.applicationId
+        );
+
+        if (!studentExists) {
+          applicationsWithMismatchedId.push({
+            studentId: app.studentId,
+            applicationId: app.applicationId,
+            applicantName: app.applicantName
+          });
+        }
+      }
+    });
+
+    // Also find applications where studentId exists but applicationId doesn't match
+    const applicationsWithWrongStudentId: MismatchedApplication[] = [];
+    applications.forEach((app: any) => {
+      if (!app.studentId) return;
+      const studentWithSameId = students.find((s: any) => s.studentId === app.studentId);
+      if (studentWithSameId && studentWithSameId.applicationId !== app.applicationId) {
+        applicationsWithWrongStudentId.push({
+          studentId: app.studentId,
+          applicationId: app.applicationId,
+          applicantName: app.applicantName
+        });
+      }
+    });
 
     return res.status(200).json({
       success: true,
-      totalApplications: applications.length,
-      totalStudents: students.length,
-      unmatchedCount: unmatchedStudents.length,
-      unmatchedStudents: unmatchedStudents.map(s => ({
-        studentId: s.studentId,
-        applicationId: s.applicationId
-      })),
+      summary: {
+        totalApplications: applications.length,
+        totalStudents: students.length
+      },
+      unmatched: {
+        studentsWithoutApplication: {
+          count: studentsWithoutApplication.length,
+          details: studentsWithoutApplication
+        },
+        studentsWithMismatchedId: {
+          count: studentsWithMismatchedId.length,
+          details: studentsWithMismatchedId
+        },
+        applicationsWithoutStudent: {
+          count: applicationsWithoutStudent.length,
+          details: applicationsWithoutStudent
+        },
+        applicationsWithMismatchedId: {
+          count: applicationsWithMismatchedId.length,
+          details: applicationsWithMismatchedId
+        },
+        applicationsWithWrongStudentId: {
+          count: applicationsWithWrongStudentId.length,
+          details: applicationsWithWrongStudentId
+        }
+      },
+      // Quick summary of counts
+      totalUnmatched: studentsWithoutApplication.length +
+        studentsWithMismatchedId.length +
+        applicationsWithoutStudent.length +
+        applicationsWithMismatchedId.length +
+        applicationsWithWrongStudentId.length
     });
 
   } catch (error: any) {

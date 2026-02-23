@@ -64,7 +64,7 @@ router.post(
 );
 
 router.post("/", protect, upload.any(), createApplication);
-router.post("/updateacadamicyear", updateAcademicYearInMatchedApplicationStudent);
+router.post("/updateacadamicyear", findUnmatchedStudentIds);
 router.post("/sms", sendSMS);
 router.post("/student", studentProtect, upload.any(), createApplicationByStudent);
 router.get("/student/:applicationId", studentProtect, getApplicationByStudent);

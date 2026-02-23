@@ -32,6 +32,7 @@ export interface IStudent extends Document {
   bloodGroup?: string;
   bloodWilling?: boolean;
   familyOccupation?: string;
+  studentImage?: string;
   familyOtherOccupation?: string;
   siblingsCount?: number;
   siblingsDetails?: { name: string; age: number; status: "studying" | "working" | "both" | "none" }[];
@@ -57,7 +58,7 @@ const StudentSchema = new Schema<IStudent>(
     city: { type: String, },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     admissionQuota: { type: String },
-    admissionUniversityRegNo: { type: String, unique: true},
+    admissionUniversityRegNo: { type: String, unique: true },
     internshipType: { type: String },
     internshipCompany: { type: String },
     internshipDuration: { type: String },
@@ -66,6 +67,7 @@ const StudentSchema = new Schema<IStudent>(
     hostelReason: { type: String },
     bloodGroup: { type: String },
     bloodWilling: { type: Boolean, default: false },
+    studentImage: { type: String },
     familyOccupation: { type: String },
     familyOtherOccupation: { type: String },
     siblingsCount: { type: Number, default: 0 },
