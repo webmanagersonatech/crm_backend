@@ -9,6 +9,8 @@ import CryptoJS from "crypto-js";
 import Settings from "../settings/model";
 import FormManage from "../form-manage/model";
 import { AuthRequest } from "../auth";
+import Application from "../applications/model";
+import Payments from "../payment/model";
 import path from 'path';
 import fs from 'fs';
 
@@ -546,7 +548,7 @@ export const getLoggedInStudent = async (
 
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
-    }).select("-__v -logo");
+    }).select("-__v -logo -applicationFee");
 
 
 
@@ -564,6 +566,144 @@ export const getLoggedInStudent = async (
     });
   } catch (err) {
     console.error("getLoggedInStudent error:", err);
+    return res.status(500).json({ success: false });
+  }
+};
+
+
+export const getpaymentrelateddata = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const studentId = req.student?.id;
+
+    if (!studentId) {
+      return res.status(401).json({ success: false });
+    }
+
+    const student = await Student.findById(studentId).select(
+      "_id firstname lastname email mobileNo applicationId instituteId"
+    );
+
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+    const settingsDoc = await Settings.findOne({
+      instituteId: student.instituteId,
+    }).select("applicationFee");
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        name: `${student.firstname} ${student.lastname}`.trim(),
+        email: student.email,
+        mobileNo: student.mobileNo,
+        applicationId: student.applicationId,
+        applicationFee: settingsDoc?.applicationFee || 0
+      },
+    });
+  } catch (err) {
+    console.error("getpaymentrelateddata error:", err);
+    return res.status(500).json({ success: false });
+  }
+};
+
+export const getReceiptData = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const studentId = req.student?.id;
+
+    if (!studentId) {
+      return res.status(401).json({ success: false });
+    }
+
+    // 🔹 Get Student
+    const student = await Student.findById(studentId)
+      .select("_id firstname lastname email mobileNo applicationId instituteId studentId")
+      .populate({
+        path: "institute",
+        select: "name instituteId",
+      });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // 🔹 Get Application
+    const application = await Application.findOne({
+      studentId: student.studentId,
+      applicationId: student.applicationId,
+      instituteId: student.instituteId,
+    }).select("program academicYear paymentStatus");
+
+    // 🔹 Get Payment (latest paid one)
+    const payment = await Payments.findOne({
+      studentId: student.studentId,
+      applicationId: student.applicationId,
+      instituteId: student.instituteId,
+      status: "paid",
+    }).sort({ createdAt: -1 });
+
+
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        errorCode: "PAYMENT_NOT_INITIATED",
+        message: "Payment not initiated yet.",
+        data: null,
+      });
+    }
+
+    // ❌ Payment Not Completed
+    if (payment.status !== "paid") {
+      return res.status(400).json({
+        success: false,
+        errorCode: "PAYMENT_NOT_COMPLETED",
+        message: `Payment status is '${payment.status}'.`,
+        data: null,
+      });
+    }
+
+
+
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        paymentDate: payment.createdAt,
+        instituteName: (student as any).institute?.name,
+        // Student
+        name: `${student.firstname} ${student.lastname}`.trim(),
+        email: student.email,
+        mobileNo: student.mobileNo,
+
+        // Application
+        applicationId: student.applicationId,
+        program: application?.program,
+        academicYear: application?.academicYear,
+
+        // Payment
+        applicationFee: payment.amount,
+        totalAmount: payment.amount,
+        paymentId: payment.paymentId,
+        orderId: payment.orderId,
+        transactionId: payment._id,
+        paymentMethod: payment.gateway,
+        paymentStatus: payment.status,
+      },
+    });
+  } catch (err) {
+    console.error("getReceiptData error:", err);
     return res.status(500).json({ success: false });
   }
 };

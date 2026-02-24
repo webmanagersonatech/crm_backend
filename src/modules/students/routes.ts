@@ -14,7 +14,9 @@ import {
     deleteStudent,
     exportStudents,
     updateStudentCleanupData,
-    uploadStudentImageByAdmin
+    uploadStudentImageByAdmin,
+    getpaymentrelateddata,
+    getReceiptData
 } from "./controller";
 
 const router = express.Router();
@@ -27,11 +29,15 @@ router.post(
     uploadStudentImageByAdmin
 );
 router.post("/login", studentLogin);
+// In your backend router
+router.get("/payment-data", studentProtect, getpaymentrelateddata);
+router.get("/receipt-data", studentProtect, getReceiptData);
 router.get('/export', protect, exportStudents);
 router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
 router.get("/", protect, listStudents);
 router.get("/:id", getStudent);
 router.get("/student/me", studentProtect, getLoggedInStudent);
+
 router.get("/studentindiual/:id", studentProtect, getStudent);
 router.put("/:id", protect, updateStudentCleanupData);
 router.put("/studentindiual/:id", studentProtect, updateStudent);

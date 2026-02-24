@@ -510,9 +510,6 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
 
 
-
-
-
 export const bulkUploadApplications = async (
   req: AuthRequest,
   res: Response
@@ -833,6 +830,10 @@ export const createApplicationByStudent = async (
 
 
     let application;
+    const searchText = buildSearchTextFromSections(
+      personalDetails,
+      educationDetails
+    );
 
     if (student.applicationId) {
 
@@ -853,7 +854,6 @@ export const createApplicationByStudent = async (
           : "Incomplete";
 
 
-
       application = await Application.findOneAndUpdate(
         { applicationId: student.applicationId },
         {
@@ -868,6 +868,7 @@ export const createApplicationByStudent = async (
           applicantName,
           country,
           state,
+          searchText,
           city,
           studentId: student.studentId,
           paymentStatus: "Unpaid",
@@ -901,6 +902,7 @@ export const createApplicationByStudent = async (
         applicationSource,
         country,
         state,
+        searchText,
         city,
         personalDetails,
         educationDetails,
