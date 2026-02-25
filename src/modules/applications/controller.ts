@@ -121,6 +121,78 @@ export const generatePassword = (length = 10) =>
     .replace(/[^a-zA-Z0-9]/g, "")
     .slice(0, length);
 
+// export const sendTemplateMails = async (req: Request, res: Response) => {
+//   try {
+//     const { templateId, recipients } = req.body;
+
+//     if (!templateId || !recipients || !recipients.length) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing templateId or recipients" });
+//     }
+
+//     // Fetch template from DB
+//     const template = await emailtemplates.findById(templateId);
+//     if (!template) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Template not found" });
+//     }
+
+//     const results: Array<any> = [];
+
+//     for (const recipient of recipients) {
+//       const htmlContent = template.description
+//         .replace(/candidatename/g, recipient.name)
+//         .replace(/{{applicationId}}/g, recipient.applicationId || "N/A")
+//         .replace(
+//           /<a href="(.*?)"(.*?)>(.*?)<\/a>/g,
+//           `<a href="$1"$2 style="color: blue;">$3</a>`
+//         );
+
+//       const emailData = {
+//         sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
+//         to: [{ email: recipient.email, name: recipient.name }],
+//         subject: template.title,
+//         htmlContent,
+//       };
+
+//       try {
+//         const response = await emailApi.sendTransacEmail(emailData);
+//         results.push({
+//           email: recipient.email,
+//           success: true,
+//           messageId: response.messageId,
+//         });
+//       } catch (err: any) {
+//         // Extract detailed error info
+//         let errorMsg = "Unknown error";
+//         if (err.response && err.response.body) {
+//           // API-specific error
+//           errorMsg = JSON.stringify(err.response.body);
+//         } else if (err.message) {
+//           errorMsg = err.message;
+//         }
+
+//         results.push({
+//           email: recipient.email,
+//           success: false,
+//           error: errorMsg,
+//         });
+//       }
+//     }
+
+//     return res.status(200).json({ success: true, results });
+//   } catch (err: any) {
+//     console.error("SendTemplateMail failed:", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to send emails",
+//       error: err.message,
+//     });
+//   }
+// };
+
 export const sendTemplateMails = async (req: Request, res: Response) => {
   try {
     const { templateId, recipients } = req.body;
@@ -131,19 +203,43 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
         .json({ success: false, message: "Missing templateId or recipients" });
     }
 
+    console.log("Starting email send process...");
+    console.log("Template ID:", templateId);
+    console.log("Recipients count:", recipients.length);
+
     // Fetch template from DB
     const template = await emailtemplates.findById(templateId);
     if (!template) {
+      console.log("Template not found:", templateId);
       return res
         .status(404)
         .json({ success: false, message: "Template not found" });
     }
 
+    console.log("Template found:", template.title);
+
     const results: Array<any> = [];
+    let successCount = 0;
+    let failCount = 0;
 
     for (const recipient of recipients) {
+      console.log(`Processing recipient: ${recipient.email}`);
+
+      // Check if email is valid
+      if (!recipient.email || !recipient.email.includes('@')) {
+        console.log(`Invalid email for recipient:`, recipient);
+        results.push({
+          email: recipient.email || 'No email',
+          name: recipient.name,
+          success: false,
+          error: "Invalid email address"
+        });
+        failCount++;
+        continue;
+      }
+
       const htmlContent = template.description
-        .replace(/candidatename/g, recipient.name)
+        .replace(/candidatename/g, recipient.name || 'Candidate')
         .replace(/{{applicationId}}/g, recipient.applicationId || "N/A")
         .replace(
           /<a href="(.*?)"(.*?)>(.*?)<\/a>/g,
@@ -152,43 +248,104 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 
       const emailData = {
         sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
-        to: [{ email: recipient.email, name: recipient.name }],
+        to: [{ email: recipient.email, name: recipient.name || 'Candidate' }],
         subject: template.title,
         htmlContent,
       };
 
+      console.log(`Sending email to ${recipient.email}...`);
+
       try {
         const response = await emailApi.sendTransacEmail(emailData);
-        results.push({
-          email: recipient.email,
-          success: true,
-          messageId: response.messageId,
-        });
+
+        // Check if we got a valid response
+        if (response && response.messageId) {
+          console.log(`✅ Email sent successfully to ${recipient.email}:`, response.messageId);
+          results.push({
+            email: recipient.email,
+            name: recipient.name,
+            success: true,
+            messageId: response.messageId,
+          });
+          successCount++;
+        } else {
+          console.log(`⚠️ Unexpected response for ${recipient.email}:`, response);
+          results.push({
+            email: recipient.email,
+            name: recipient.name,
+            success: false,
+            error: "No messageId in response",
+            response: response
+          });
+          failCount++;
+        }
       } catch (err: any) {
+        console.error(`❌ Failed to send to ${recipient.email}:`);
+
         // Extract detailed error info
         let errorMsg = "Unknown error";
-        if (err.response && err.response.body) {
-          // API-specific error
-          errorMsg = JSON.stringify(err.response.body);
+        let statusCode = null;
+
+        if (err.response) {
+          statusCode = err.response.status;
+          console.error("Status:", err.response.status);
+
+          if (err.response.data) {
+            console.error("Error data:", JSON.stringify(err.response.data, null, 2));
+            errorMsg = JSON.stringify(err.response.data);
+          } else if (err.response.body) {
+            console.error("Error body:", JSON.stringify(err.response.body, null, 2));
+            errorMsg = JSON.stringify(err.response.body);
+          }
         } else if (err.message) {
+          console.error("Error message:", err.message);
           errorMsg = err.message;
         }
 
+        // Log the full error object for debugging
+        console.error("Full error:", err);
+
         results.push({
           email: recipient.email,
+          name: recipient.name,
           success: false,
           error: errorMsg,
+          statusCode: statusCode
         });
+        failCount++;
       }
     }
 
-    return res.status(200).json({ success: true, results });
+    console.log("=== Email Sending Summary ===");
+    console.log(`Total: ${recipients.length}, Success: ${successCount}, Failed: ${failCount}`);
+    console.log("Detailed results:", JSON.stringify(results, null, 2));
+
+    // Check if any emails were actually sent
+    if (successCount === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "No emails were sent successfully",
+        results,
+        summary: { total: recipients.length, success: successCount, failed: failCount }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      results,
+      summary: { total: recipients.length, success: successCount, failed: failCount }
+    });
   } catch (err: any) {
-    console.error("SendTemplateMail failed:", err);
+    console.error("SendTemplateMail failed with critical error:");
+    console.error("Error name:", err.name);
+    console.error("Error message:", err.message);
+    console.error("Full error:", err);
+
     return res.status(500).json({
       success: false,
       message: "Failed to send emails",
       error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 };
@@ -835,6 +992,13 @@ export const createApplicationByStudent = async (
       educationDetails
     );
 
+    const formConfig = await formmanager.findOne({ instituteId });
+
+    const hasEducation =
+      Array.isArray(formConfig?.educationDetails) &&
+      formConfig.educationDetails.length > 0;
+    console.log(hasEducation, "hasEducation")
+
     if (student.applicationId) {
 
       const existingApplication = await Application.findOne({
@@ -848,10 +1012,17 @@ export const createApplicationByStudent = async (
         (Array.isArray(educationDetails) && educationDetails.length > 0) ||
         (existingApplication?.educationDetails?.length ?? 0) > 0;
 
-      const formStatus =
-        hasPersonalDetails && hasEducationDetails
-          ? "Complete"
-          : "Incomplete";
+      let formStatus = "Incomplete";
+
+      if (hasPersonalDetails) {
+        if (hasEducation) {
+          // Education is required by config
+          formStatus = hasEducationDetails ? "Complete" : "Incomplete";
+        } else {
+          // Education is not required by config
+          formStatus = "Complete";
+        }
+      }
 
 
       application = await Application.findOneAndUpdate(
@@ -893,6 +1064,7 @@ export const createApplicationByStudent = async (
       await student.save();
     } else {
       // ✅ Create new application
+      const formStatus = hasEducation === false ? "Complete" : "Incomplete";
       application = await Application.create({
         instituteId,
         program,
@@ -910,7 +1082,7 @@ export const createApplicationByStudent = async (
         studentId: student.studentId,
         paymentStatus: "Unpaid",
         status: "Pending",
-        formStatus: "Incomplete",
+        formStatus
       });
 
       // Link student to this new application

@@ -23,7 +23,7 @@ export interface IApplication extends Document {
   educationDetails: Array<{ sectionName: string; fields: Record<string, any> }>;
   applicantName: string;
   courseCode?: string;
-  paymentStatus: "Paid" | "Unpaid" | "Partially";
+  paymentStatus: "Paid" | "Unpaid";
   status: "Pending" | "Approved" | "Rejected";
   formStatus?: "Incomplete" | "Complete";
   interactions?: string;
