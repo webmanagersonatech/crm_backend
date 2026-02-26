@@ -456,7 +456,64 @@ export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
 // Export middleware
 export const uploadMiddleware = upload.single("file");
 
+export const getduplicateLeads = async (req: AuthRequest, res: Response) => {
+  try {
+    const { instituteId, phoneNumber } = req.query;
+    const user = req.user;
 
+    if (!phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    let leads;
+
+    // 🔥 SUPERADMIN → All institutes
+    if (user.role === "superadmin") {
+      leads = await Lead.find({ phoneNumber })
+        .sort({ createdAt: -1 })
+        .populate([
+          { path: "creator", select: "firstname lastname instituteId role" },
+          { path: "institute", select: "name" },
+        ]);
+    }
+    // 🔥 Others → Only same institute
+    else {
+      leads = await Lead.find({
+        phoneNumber,
+        instituteId: instituteId || user.instituteId,
+      })
+        .sort({ createdAt: -1 })
+        .populate([
+          { path: "creator", select: "firstname lastname instituteId role" },
+          { path: "institute", select: "name" },
+        ]);
+    }
+
+    // ✅ Separate original & duplicate
+    const originalData = leads.filter((lead) => lead.isduplicate === false);
+    const duplicateData = leads.filter((lead) => lead.isduplicate === true);
+
+    res.status(200).json({
+      success: true,
+      message: "Duplicate leads fetched successfully",
+      totalCount: leads.length,
+      originalCount: originalData.length,
+      duplicateCount: duplicateData.length,
+      originalData,
+      duplicateData,
+    });
+
+  } catch (error: any) {
+    console.error("Error fetching duplicate leads:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 
 export const listLeads = async (req: AuthRequest, res: Response) => {
@@ -474,6 +531,7 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
       phoneNumber, // ✅ added
       leadId,      // ✅ added
       country, state, city,
+      isduplicate,
       leadSource,
     } = req.query;
     const user = req.user;
@@ -518,7 +576,12 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
       filter.leadId = { $regex: leadId, $options: "i" };
     }
 
-
+    // 🔹 Duplicate filter
+    if (isduplicate === "true") {
+      filter.isduplicate = true;
+    } else if (isduplicate === "false") {
+      filter.isduplicate = false;
+    }
 
     // 🔹 Date range filter (createdAt between startDate and endDate)
     if (startDate || endDate) {

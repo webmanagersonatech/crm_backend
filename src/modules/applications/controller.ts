@@ -257,7 +257,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 
 //       try {
 //         const response = await emailApi.sendTransacEmail(emailData);
-        
+
 //         // Check if we got a valid response
 //         if (response && response.messageId) {
 //           console.log(`✅ Email sent successfully to ${recipient.email}:`, response.messageId);
@@ -281,15 +281,15 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 //         }
 //       } catch (err: any) {
 //         console.error(`❌ Failed to send to ${recipient.email}:`);
-        
+
 //         // Extract detailed error info
 //         let errorMsg = "Unknown error";
 //         let statusCode = null;
-        
+
 //         if (err.response) {
 //           statusCode = err.response.status;
 //           console.error("Status:", err.response.status);
-          
+
 //           if (err.response.data) {
 //             console.error("Error data:", JSON.stringify(err.response.data, null, 2));
 //             errorMsg = JSON.stringify(err.response.data);
@@ -301,7 +301,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 //           console.error("Error message:", err.message);
 //           errorMsg = err.message;
 //         }
-        
+
 //         // Log the full error object for debugging
 //         console.error("Full error:", err);
 
@@ -340,7 +340,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 //     console.error("Error name:", err.name);
 //     console.error("Error message:", err.message);
 //     console.error("Full error:", err);
-    
+
 //     return res.status(500).json({
 //       success: false,
 //       message: "Failed to send emails",
