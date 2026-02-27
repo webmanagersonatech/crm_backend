@@ -73,46 +73,79 @@ export const getInstitution = async (req: Request, res: Response) => {
     res.status(500).json({ message: err.message });
   }
 };
+// export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
+//   try {
+//     const { instituteId } = req.params;
+
+//     if (!instituteId) {
+//       return res.status(400).json({ message: 'Institute ID is required' });
+//     }
+
+//     // Validate institute exists and is active
+//     const institution = await Institution.findOne({ instituteId, status: 'active' });
+//     if (!institution) {
+//       return res.status(404).json({ message: 'Invalid or inactive institute' });
+//     }
+
+//     // res.cookie('instituteId', instituteId, {
+//     //   httpOnly: process.env.NODE_ENV === 'production', 
+//     //   secure: process.env.NODE_ENV === 'production',   
+//     //   sameSite: 'lax',
+//     //   maxAge: 1000 * 60 * 60, // 1 hour
+//     //   path: '/', 
+//     // });
+//     res.cookie('instituteId', instituteId, {
+//       httpOnly: true,
+//       secure: true,           // must be true in HTTPS
+//       sameSite: 'none',       // required for cross-site
+//        domain: '.sonastar.com',
+//       maxAge: 1000 * 60 * 60,
+//       path: '/',
+//     });
+
+//     // Redirect to student portal
+//     const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
+//     res.redirect(portalURL);
+
+//   } catch (err: any) {
+//     console.error(err);
+//     res.status(500).json({ message: err.message || 'Server error' });
+//   }
+// };
+
 export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
   try {
     const { instituteId } = req.params;
 
+    const portalURL =
+      process.env.STUDENT_PORTAL_URL || "http://localhost:3001";
+
     if (!instituteId) {
-      return res.status(400).json({ message: 'Institute ID is required' });
+      return res.redirect(`${portalURL}/institute-error`);
     }
 
-    // Validate institute exists and is active
-    const institution = await Institution.findOne({ instituteId, status: 'active' });
-    if (!institution) {
-      return res.status(404).json({ message: 'Invalid or inactive institute' });
-    }
-
-    // res.cookie('instituteId', instituteId, {
-    //   httpOnly: process.env.NODE_ENV === 'production', 
-    //   secure: process.env.NODE_ENV === 'production',   
-    //   sameSite: 'lax',
-    //   maxAge: 1000 * 60 * 60, // 1 hour
-    //   path: '/', 
-    // });
-    res.cookie('instituteId', instituteId, {
-      httpOnly: true,
-      secure: true,           // must be true in HTTPS
-      sameSite: 'none',       // required for cross-site
-      domain: '.sonstar.com', // 🔥 this is the main fix
-      maxAge: 1000 * 60 * 60,
-      path: '/',
+    const institution = await Institution.findOne({
+      instituteId,
+      status: "active",
     });
 
-    // Redirect to student portal
-    const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
-    res.redirect(portalURL);
+    if (!institution) {
+      return res.redirect(`${portalURL}/institute-error`);
+    }
+
+    return res.redirect(
+      `${portalURL}/set-institute?instituteId=${instituteId}`
+    );
 
   } catch (err: any) {
     console.error(err);
-    res.status(500).json({ message: err.message || 'Server error' });
+
+    const portalURL =
+      process.env.STUDENT_PORTAL_URL || "http://localhost:3001";
+
+    return res.redirect(`${portalURL}/institute-error`);
   }
 };
-
 
 export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response) => {
   try {
