@@ -87,14 +87,21 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invalid or inactive institute' });
     }
 
+    // res.cookie('instituteId', instituteId, {
+    //   httpOnly: process.env.NODE_ENV === 'production', 
+    //   secure: process.env.NODE_ENV === 'production',   
+    //   sameSite: 'lax',
+    //   maxAge: 1000 * 60 * 60, // 1 hour
+    //   path: '/', 
+    // });
     res.cookie('instituteId', instituteId, {
-      httpOnly: process.env.NODE_ENV === 'production', // ✅ true in prod, false on localhost
-      secure: process.env.NODE_ENV === 'production',   // ✅ HTTPS in prod, false on localhost
-      sameSite: 'lax',
-      maxAge: 1000 * 60 * 60, // 1 hour
-      path: '/', // make it accessible site-wide
+      httpOnly: true,
+      secure: true,           // must be true in HTTPS
+      sameSite: 'none',       // required for cross-site
+      domain: '.sonstar.com', // 🔥 this is the main fix
+      maxAge: 1000 * 60 * 60,
+      path: '/',
     });
-
 
     // Redirect to student portal
     const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
@@ -121,21 +128,14 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
       return res.status(404).json({ message: 'Invalid or inactive institute' });
     }
 
-    // res.cookie('instituteId', instituteId, {
-    //   httpOnly: process.env.NODE_ENV === 'production', 
-    //   secure: process.env.NODE_ENV === 'production',  
-    //   sameSite: 'lax',
-    //   maxAge: 1000 * 60 * 60, 
-    //   path: '/', 
-    // });
     res.cookie('instituteId', instituteId, {
-      httpOnly: true,
-      secure: true,           // must be true in HTTPS
-      sameSite: 'none',       // required for cross-site
-      domain: '.sonstar.com', // 🔥 this is the main fix
+      httpOnly: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: 1000 * 60 * 60,
       path: '/',
     });
+
 
     // Redirect to student portal
     const portalURL = process.env.ENQUIRY_PORTAL_URL || 'http://localhost:3002';
