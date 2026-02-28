@@ -116,6 +116,16 @@ export const studentLogin = async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: "/",
     });
+
+    res.cookie("instituteId", student.instituteId, {
+      httpOnly: false, // must be false if frontend needs access
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+
+
     res.status(200).json({
       success: true,
       message: "Login successful",
