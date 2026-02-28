@@ -16,7 +16,8 @@ import {
     updateStudentCleanupData,
     uploadStudentImageByAdmin,
     getpaymentrelateddata,
-    getReceiptData
+    getReceiptData,
+    studentLogout
 } from "./controller";
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.post(
     uploadStudentImageByAdmin
 );
 router.post("/login", studentLogin);
+router.post("/logout", studentLogout);
 // In your backend router
 router.get("/payment-data", studentProtect, getpaymentrelateddata);
 router.get("/receipt-data", studentProtect, getReceiptData);

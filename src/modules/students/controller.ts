@@ -132,6 +132,25 @@ export const studentLogin = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+export const studentLogout = async (req: Request, res: Response) => {
+  try {
+    res.cookie("token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      expires: new Date(0),
+      path: "/",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 // Get a single student by ID
 export const getStudent = async (req: Request, res: Response) => {
   try {
