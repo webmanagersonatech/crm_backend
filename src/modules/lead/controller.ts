@@ -13,6 +13,38 @@ import Student from '../students/model';
 const upload = multer({
   dest: "uploads/",
 });
+const SibApiV3Sdk = require("sib-api-v3-sdk");
+
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+const sendLeadConfirmationEmail = async (
+  email: string,
+  name: string,
+  program: string
+) => {
+  const emailData = {
+    sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
+    to: [{ email, name: name || "Student" }],
+    subject: "Enquiry Received – We Will Contact You Soon",
+    htmlContent: `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Thank You for Your Enquiry</h2>
+        <p>Hello <b>${name || "Student"}</b>,</p>
+        <p>We have successfully received your enquiry for the program <b>${program}</b>.</p>
+        <p>Our team will contact you shortly.</p>
+        <br/>
+        <p>Thank you for choosing us.</p>
+        <hr />
+        <p style="font-size: 12px; color: #555;">
+          Sona Institute — Admissions Team
+        </p>
+      </div>
+    `,
+  };
+
+  await emailApi.sendTransacEmail(emailData);
+};
 const generateLeadId = async (instituteId: string) => {
   const random = Math.random().toString(16).substring(2, 8).toUpperCase();
   return `${instituteId}-LE-${random}`;
@@ -46,7 +78,6 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   const existingLeads = await Lead.find({
     phoneNumber: value.phoneNumber,
-    instituteId,
   });
 
   let duplicateReason = null;
@@ -395,7 +426,65 @@ export const bulkUploadLeads = async (req: any, res: any) => {
 // };
 
 
-export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
+// export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
+//   const { error, value } = createLeadSchema.validate(req.body);
+
+//   if (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+
+//   const { instituteId, phoneNumber } = value;
+
+//   try {
+//     const existingLead = await Lead.findOne({ instituteId, phoneNumber });
+
+//     // 🚨 DUPLICATE
+//     if (existingLead) {
+//       return res.status(409).json({
+//         success: false,                 // important
+//         alreadyEnquired: true,
+//         message: "You have already enquired. Our team will respond to you shortly.",
+//         data: existingLead,
+//       });
+//     }
+
+//     const firstFollowUp = {
+//       status: value.status || "New",
+//       calltaken: value.calltaken || "",
+//       communication: value.communication || "Online",
+//       followUpDate: value.followUpDate ? new Date(value.followUpDate) : new Date(),
+//       description: value.description || "This lead enquiry has come from online",
+//     };
+
+//     const lead = await Lead.create({
+//       ...value,
+//       instituteId,
+//       followups: [firstFollowUp],
+//       isduplicate: false,
+//       duplicateReason: null,
+//     });
+
+//     // ✅ CREATED
+//     return res.status(201).json({
+//       success: true,
+//       alreadyEnquired: false,
+//       message: "Enquiry submitted successfully. Our team will contact you shortly.",
+//       data: lead,
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Unable to submit enquiry. Please try again later.",
+//     });
+//   }
+// };
+
+export const createLeadfromonline = async (req: Request, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
 
   if (error) {
@@ -408,26 +497,32 @@ export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
   const { instituteId, phoneNumber } = value;
 
   try {
+    // 🔍 Check Duplicate
     const existingLead = await Lead.findOne({ instituteId, phoneNumber });
 
-    // 🚨 DUPLICATE
     if (existingLead) {
       return res.status(409).json({
-        success: false,                 // important
+        success: false,
         alreadyEnquired: true,
-        message: "You have already enquired. Our team will respond to you shortly.",
+        message:
+          "You have already enquired. Our team will respond to you shortly.",
         data: existingLead,
       });
     }
 
+    // 📝 First Followup
     const firstFollowUp = {
       status: value.status || "New",
       calltaken: value.calltaken || "",
       communication: value.communication || "Online",
-      followUpDate: value.followUpDate ? new Date(value.followUpDate) : new Date(),
-      description: value.description || "This lead enquiry has come from online",
+      followUpDate: value.followUpDate
+        ? new Date(value.followUpDate)
+        : new Date(),
+      description:
+        value.description || "This lead enquiry has come from online",
     };
 
+    // ✅ Create Lead
     const lead = await Lead.create({
       ...value,
       instituteId,
@@ -436,16 +531,29 @@ export const createLeadfromonline = async (req: AuthRequest, res: Response) => {
       duplicateReason: null,
     });
 
-    // ✅ CREATED
+    // 📧 Send Confirmation Email (Don't break if fails)
+    try {
+      if (value.email) {
+        await sendLeadConfirmationEmail(
+          value.email,
+          value.candidateName,
+          value.program
+        );
+      }
+    } catch (mailError) {
+      console.error("Lead email sending failed:", mailError);
+    }
+
+    // 🎉 Success Response
     return res.status(201).json({
       success: true,
       alreadyEnquired: false,
-      message: "Enquiry submitted successfully. Our team will contact you shortly.",
+      message:
+        "Enquiry submitted successfully. Our team will contact you shortly.",
       data: lead,
     });
-
   } catch (err) {
-    console.error(err);
+    console.error("Lead creation error:", err);
     return res.status(500).json({
       success: false,
       message: "Unable to submit enquiry. Please try again later.",
@@ -458,7 +566,7 @@ export const uploadMiddleware = upload.single("file");
 
 export const getduplicateLeads = async (req: AuthRequest, res: Response) => {
   try {
-    const { instituteId, phoneNumber } = req.query;
+    const { phoneNumber } = req.query;
     const user = req.user;
 
     if (!phoneNumber) {
@@ -468,29 +576,13 @@ export const getduplicateLeads = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    let leads;
-
-    // 🔥 SUPERADMIN → All institutes
-    if (user.role === "superadmin") {
-      leads = await Lead.find({ phoneNumber })
-        .sort({ createdAt: -1 })
-        .populate([
-          { path: "creator", select: "firstname lastname instituteId role" },
-          { path: "institute", select: "name" },
-        ]);
-    }
-    // 🔥 Others → Only same institute
-    else {
-      leads = await Lead.find({
-        phoneNumber,
-        instituteId: instituteId || user.instituteId,
-      })
-        .sort({ createdAt: -1 })
-        .populate([
-          { path: "creator", select: "firstname lastname instituteId role" },
-          { path: "institute", select: "name" },
-        ]);
-    }
+    // ✅ Fetch leads by phone number
+    const leads = await Lead.find({ phoneNumber })
+      .sort({ createdAt: -1 })
+      .populate([
+        { path: "creator", select: "firstname lastname instituteId role" },
+        { path: "institute", select: "name" },
+      ]);
 
     // ✅ Separate original & duplicate
     const originalData = leads.filter((lead) => lead.isduplicate === false);
@@ -765,7 +857,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
     if (phoneNumber && phoneNumber !== lead.phoneNumber) {
       const duplicates = await Lead.find({
         phoneNumber,
-        instituteId: lead.instituteId,
+        // instituteId: lead.instituteId,
         _id: { $ne: id }, // exclude current lead
       }).select("leadId");
 
