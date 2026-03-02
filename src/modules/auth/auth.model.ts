@@ -13,6 +13,7 @@ export interface IUser extends Document {
   designation: string;
   role: "superadmin" | "admin" | "user";
   instituteId: string;
+  apiKey: { type: String, unique: true, sparse: true },
   lastLoginTimeDate?: Date;
   status: "active" | "inactive";
   comparePassword(candidate: string): Promise<boolean>;
@@ -28,6 +29,7 @@ const UserSchema = new Schema<IUser>(
     mobileNo: { type: String, required: true, unique: true },
     designation: { type: String, required: true },
     userType: { type: String, },
+    apiKey: { type: String, unique: true, sparse: true },
     role: { type: String, enum: ["superadmin", "admin", "user"], default: "user" },
     instituteId: { type: String, required: true },
     lastLoginTimeDate: { type: Date, default: null },

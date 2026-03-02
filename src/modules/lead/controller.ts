@@ -132,6 +132,63 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   res.json(lead);
 };
+export const createThirdPartyLead = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  req.body.instituteId = req.user?.instituteId;
+
+  const { error, value } = createLeadSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+
+  const createdBy = req.user?._id;
+  const instituteId = req.user?.instituteId;
+
+  if (!createdBy || !instituteId) {
+    return res.status(401).json({ message: "Unauthorized user" });
+  }
+
+  const existingLeads = await Lead.find({
+    phoneNumber: value.phoneNumber,
+  });
+
+  const duplicateReason =
+    existingLeads.length > 0
+      ? "A lead with this phone number already exists in our Software."
+      : null;
+
+  const fullName = `${req.user?.firstname || ""} ${req.user?.lastname || ""
+    }`.trim();
+
+  // ✅ Default Followup
+  const firstFollowUp = {
+    status: "New",
+    calltaken: fullName || "Third Party Vendor",
+    communication: value.communication || "Call",
+    followUpDate: new Date(),
+    description: `Lead given by ${fullName || "Third Party Vendor"}`,
+  };
+
+  const lead = await Lead.create({
+    ...value,
+
+    // 🔥 Force system controlled fields
+    status: "New",
+    leadSource: "offline",
+    createdBy,
+    instituteId,
+    followups: [firstFollowUp],
+
+    isduplicate: existingLeads.length > 0,
+    duplicateReason,
+  });
+
+  res.json({
+    success: true,
+    message: "Lead created successfully",
+    leadId: lead.leadId,
+  });
+};
 
 export const bulkUploadLeads = async (req: any, res: any) => {
   let filePath: string | null = null;

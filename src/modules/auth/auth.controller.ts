@@ -8,6 +8,7 @@ import { RegisterDTO } from './auth.types';
 import CryptoJS from "crypto-js";
 import bcrypt from "bcryptjs";
 import Permission from '../permissions/model';
+import crypto from "crypto";
 
 dotenv.config();
 const SECRET_KEY = "sonacassecretkey@2025";
@@ -21,6 +22,10 @@ const generateToken = (payload: object): string => {
     expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'],
   };
   return jwt.sign(payload, secret, options);
+};
+
+const generateApiKey = () => {
+  return crypto.randomBytes(32).toString("hex");
 };
 
 export const register = async (req: Request, res: Response) => {
@@ -78,8 +83,14 @@ export const register = async (req: Request, res: Response) => {
     if (existingphone)
       return res.status(400).json({ message: 'Mobile number already exists' });
 
+    if (value.userType === "third_party") {
+      value.apiKey = generateApiKey();
+      value.status = "active";
+    }
+
     // ✅ REMOVE permissions before saving user
     const { permissions, ...userData } = value;
+
 
     const user = await User.create(userData as RegisterDTO);
 
