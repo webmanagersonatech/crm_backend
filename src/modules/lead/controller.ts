@@ -180,7 +180,7 @@ export const createThirdPartyLead = async (
     createdBy,
     instituteId,
     followups: [firstFollowUp],
-    followUpDate:now,
+    followUpDate: now,
     isduplicate: existingLeads.length > 0,
     duplicateReason,
   });
@@ -246,17 +246,15 @@ export const bulkUploadLeads = async (req: any, res: any) => {
 
     const parseValidDate = (value: any): Date | null => {
       if (!value || value === "") return null;
-
       const date = new Date(value);
       return isNaN(date.getTime()) ? null : date;
     };
 
     // ============================
-    // ✅ STEP 1: SHEET VALIDATION
+    // ✅ STEP 1: BASIC SHEET VALIDATION
     // ============================
 
     const errors: { row: number; field: string; message: string }[] = [];
-    const phoneMap = new Map<string, number[]>();
 
     rows.forEach((row, index) => {
       const rowNumber = index + 2;
@@ -293,25 +291,6 @@ export const bulkUploadLeads = async (req: any, res: any) => {
           message: "Candidate name is required",
         });
       }
-
-      // Track duplicates inside sheet
-      if (!phoneMap.has(phone)) {
-        phoneMap.set(phone, []);
-      }
-      phoneMap.get(phone)!.push(rowNumber);
-    });
-
-    // Sheet duplicate check
-    phoneMap.forEach((rowsList, phone) => {
-      if (rowsList.length > 1) {
-        rowsList.forEach((r) => {
-          errors.push({
-            row: r,
-            field: "phoneNumber",
-            message: `Duplicate phone number in sheet (${phone})`,
-          });
-        });
-      }
     });
 
     if (errors.length > 0) {
@@ -334,13 +313,10 @@ export const bulkUploadLeads = async (req: any, res: any) => {
       instituteId,
     }).select("phoneNumber leadId");
 
-    const existingMap = new Map<string, string[]>();
+    const existingMap = new Map<string, string>();
 
     existingLeads.forEach((lead: any) => {
-      if (!existingMap.has(lead.phoneNumber)) {
-        existingMap.set(lead.phoneNumber, []);
-      }
-      existingMap.get(lead.phoneNumber)!.push(lead.leadId);
+      existingMap.set(lead.phoneNumber, lead.leadId);
     });
 
     // ============================
@@ -348,15 +324,26 @@ export const bulkUploadLeads = async (req: any, res: any) => {
     // ============================
 
     const leadsToInsert = [];
+    const sheetTracker = new Map<string, number>();
 
     for (const row of rows) {
-      const isDuplicate = existingMap.has(row.phoneNumber);
 
-      const duplicateReason = isDuplicate
-        ? `Duplicate phone exists. Lead IDs: ${existingMap
-          .get(row.phoneNumber)
-          ?.join(", ")}`
-        : null;
+      // 🔹 Track sheet duplicate count
+      const count = sheetTracker.get(row.phoneNumber) || 0;
+      sheetTracker.set(row.phoneNumber, count + 1);
+
+      const isSheetDuplicate = count > 0;
+      const isSystemDuplicate = existingMap.has(row.phoneNumber);
+
+      const isDuplicate = isSheetDuplicate || isSystemDuplicate;
+
+      let duplicateReason = null;
+
+      if (isSystemDuplicate) {
+        duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
+      } else if (isSheetDuplicate) {
+        duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
+      }
 
       const leadId = await generateUniqueLeadId(instituteId);
 
@@ -397,11 +384,11 @@ export const bulkUploadLeads = async (req: any, res: any) => {
     }
 
     // ============================
-    // ✅ STEP 4: INSERT SAFELY
+    // ✅ STEP 4: INSERT
     // ============================
 
     const insertedLeads = await Lead.insertMany(leadsToInsert, {
-      ordered: false, // prevents stopping on first error
+      ordered: false,
     });
 
     fs.unlinkSync(filePath);
@@ -783,6 +770,7 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
       country,
       state,
       city,
+      isduplicate,
       leadSource,
     } = req.query;
 
@@ -826,6 +814,12 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     // 🔹 Lead ID search
     if (leadId) {
       filter.leadId = { $regex: leadId, $options: "i" };
+    }
+
+    if (isduplicate === "true") {
+      filter.isduplicate = true;
+    } else if (isduplicate === "false") {
+      filter.isduplicate = false;
     }
 
     // 🔹 Date range filter (createdAt between startDate and endDate)
