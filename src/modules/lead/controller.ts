@@ -160,12 +160,14 @@ export const createThirdPartyLead = async (
   const fullName = `${req.user?.firstname || ""} ${req.user?.lastname || ""
     }`.trim();
 
+  const now = new Date();
+
   // ✅ Default Followup
   const firstFollowUp = {
     status: "New",
     calltaken: fullName || "Third Party Vendor",
     communication: value.communication || "Call",
-    followUpDate: new Date(),
+    followUpDate: now,
     description: `Lead given by ${fullName || "Third Party Vendor"}`,
   };
 
@@ -178,7 +180,7 @@ export const createThirdPartyLead = async (
     createdBy,
     instituteId,
     followups: [firstFollowUp],
-
+    followUpDate:now,
     isduplicate: existingLeads.length > 0,
     duplicateReason,
   });
