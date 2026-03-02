@@ -83,11 +83,8 @@ export const createLead = async (req: AuthRequest, res: Response) => {
   let duplicateReason = null;
 
   if (existingLeads.length > 0) {
-    // Collect all existing lead IDs
-    const duplicateLeadIds = existingLeads.map(lead => lead.leadId.toString());
 
-    // Set duplicate reason
-    duplicateReason = `A lead with this phone number already exists in our system (${existingLeads.length} duplicate${existingLeads.length > 1 ? 's' : ''}). Existing Lead IDs: ${duplicateLeadIds.join(", ")}. Please review before follow-up.`;
+    duplicateReason = `A lead with this phone number already exists in our Software. Please review before follow-up.`;
   }
 
   const user = await User.findById(createdBy).lean();
@@ -135,7 +132,7 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   res.json(lead);
 };
-// Bulk Upload Controller
+
 export const bulkUploadLeads = async (req: any, res: any) => {
   let filePath: string | null = null;
 
@@ -849,39 +846,45 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
     const lead = await Lead.findById(id);
 
     if (!lead) {
-      return res.status(404).json({ message: 'Not found' });
+      return res.status(404).json({ message: "Not found" });
     }
 
-    let isduplicate: boolean = lead.isduplicate;
-    let duplicateReason: string = lead.duplicateReason || "";
-    if (phoneNumber && phoneNumber !== lead.phoneNumber) {
-      const duplicates = await Lead.find({
-        phoneNumber,
-        // instituteId: lead.instituteId,
-        _id: { $ne: id }, // exclude current lead
-      }).select("leadId");
+    const oldPhone = lead.phoneNumber;
 
-      if (duplicates.length > 0) {
+    let isduplicate = false;
+    let duplicateReason = "";
+
+    // ===============================
+    // 🔥 STEP 1: Handle NEW phone group
+    // ===============================
+    if (phoneNumber && phoneNumber !== oldPhone) {
+
+      const sameNewPhoneLeads = await Lead.find({
+        phoneNumber,
+        _id: { $ne: id },
+      }).sort({ createdAt: 1 });
+
+      if (sameNewPhoneLeads.length > 0) {
         isduplicate = true;
         duplicateReason =
-          `Phone number already exists in lead(s): ${duplicates
-            .map(d => d.leadId)
-            .join(", ")}`;
-      } else {
-        // ✅ no duplicates → clear flag
-        isduplicate = false;
-        duplicateReason = "";
+          "A lead with this phone number already exists in our Software. Please review before follow-up.";
       }
+    } else {
+      // If phone not changed, keep existing duplicate status
+      isduplicate = lead.isduplicate;
+      duplicateReason = lead.duplicateReason || "";
     }
 
+    // ===============================
     // 🔹 Normalize date
+    // ===============================
     const oldDate = lead.followUpDate
-      ? new Date(lead.followUpDate).toISOString().split('T')[0]
-      : '';
+      ? new Date(lead.followUpDate).toISOString().split("T")[0]
+      : "";
 
     const newDate = followUpDate
-      ? new Date(followUpDate).toISOString().split('T')[0]
-      : '';
+      ? new Date(followUpDate).toISOString().split("T")[0]
+      : "";
 
     const isFollowUpChanged =
       status !== lead.status ||
@@ -889,7 +892,9 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       description !== lead.description ||
       newDate !== oldDate;
 
-    // ✅ Build update safely
+    // ===============================
+    // ✅ Build Update Query
+    // ===============================
     const updateQuery: any = {
       $set: {
         ...(phoneNumber !== undefined && { phoneNumber }),
@@ -899,14 +904,17 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         ...(description !== undefined && { description }),
         isduplicate,
         duplicateReason,
-        ...rest, // ✅ now safe (NO followups here)
+        ...rest,
       },
     };
 
-    // ➕ Push followup separately
     if (isFollowUpChanged) {
       const user = await User.findById(req.user?.id).lean();
-      const calltaken = (rest.counsellorName || `${user?.firstname || ""} ${user?.lastname || ""}`).trim();
+      const calltaken = (
+        rest.counsellorName ||
+        `${user?.firstname || ""} ${user?.lastname || ""}`
+      ).trim();
+
       updateQuery.$push = {
         followups: {
           status,
@@ -918,22 +926,57 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       };
     }
 
-
     const updatedLead = await Lead.findByIdAndUpdate(
       id,
       updateQuery,
       { new: true }
     );
 
+    // ===============================
+    // 🔥 STEP 2: Recalculate OLD phone group
+    // ===============================
+    if (phoneNumber && phoneNumber !== oldPhone) {
+
+      const remainingOldPhoneLeads = await Lead.find({
+        phoneNumber: oldPhone,
+      }).sort({ createdAt: 1 });
+
+      if (remainingOldPhoneLeads.length > 0) {
+
+        const originalLead = remainingOldPhoneLeads[0];
+
+        await Lead.findByIdAndUpdate(originalLead._id, {
+          isduplicate: false,
+          duplicateReason: "",
+        });
+
+        const duplicateIds = remainingOldPhoneLeads
+          .slice(1)
+          .map(l => l._id);
+
+        if (duplicateIds.length > 0) {
+          await Lead.updateMany(
+            { _id: { $in: duplicateIds } },
+            {
+              isduplicate: true,
+              duplicateReason:
+                "A lead with this phone number already exists in our Software. Please review before follow-up.",
+            }
+          );
+        }
+      }
+    }
+
+    // ===============================
+    // 🔁 Sync Application & Student
+    // ===============================
     if (updatedLead?.applicationId) {
-      // 1️⃣ Update Application
       const application = await Application.findOneAndUpdate(
         { applicationId: updatedLead.applicationId },
         { interactions: updatedLead.status },
         { new: true }
       );
 
-      // 2️⃣ Sync Student (only if application exists)
       if (application?.studentId) {
         await Student.findOneAndUpdate(
           { studentId: application.studentId },
@@ -942,8 +985,6 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         );
       }
     }
-
-
 
     res.json(updatedLead);
 
