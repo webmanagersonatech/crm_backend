@@ -102,67 +102,6 @@ export const verifyRazorpayPayment = async (
 // ========================================================
 // INSTAMOJO CREATE
 // ========================================================
-// export const createInstamojoPayment = async (
-//   req: StudentAuthRequest,
-//   res: Response
-// ) => {
-//   try {
-//     const { applicationId } = req.body;
-//     const student = req.student;
-//     if (!student) return res.status(401).json({ message: "Unauthorized" });
-
-//     const settings = await Settings.findOne({
-//       instituteId: student.instituteId,
-//     });
-
-//     if (!settings)
-//       return res.status(400).json({ message: "Settings not configured" });
-
-//     const amount = settings.applicationFee;
-
-//     const response = await axios.post(
-//       "https://www.instamojo.com/api/1.1/payment-requests/",
-//       {
-//         amount: amount.toString(),
-//         purpose: `Application Fee - ${applicationId}`,
-//         buyer_name: `${student.firstname} ${student.lastname}`,
-//         email: student.email,
-//         phone: student.mobileNo,
-//         redirect_url:
-//           "https://hikabackend.sonastar.com/api/payments/instamojo/redirect",
-//         webhook:
-//           "https://hikabackend.sonastar.com/api/payments/instamojo/webhook",
-//       },
-//       {
-//         headers: {
-//           "X-Api-Key": "354258c3f2d1eda35995dae1540db4b4",
-//           "X-Auth-Token": "7f76729963176d6cc7169105b0cd81f4",
-//         },
-//       }
-//     );
-
-//     const paymentRequest = response.data.payment_request;
-
-//     await Payment.create({
-//       studentId: student.studentId,
-//       applicationId,
-//       amount,
-//       instituteId: student.instituteId,
-//       orderId: paymentRequest.id,
-//       status: "pending",
-//       gateway: "instamojo",
-//     });
-
-//     return res.json({
-//       success: true,
-//       paymentUrl: paymentRequest.longurl,
-//     });
-//   } catch (error: any) {
-//     console.error(error.response?.data || error);
-//     return res.status(500).json({ message: "Instamojo failed" });
-//   }
-// };
-
 export const createInstamojoPayment = async (
   req: StudentAuthRequest,
   res: Response
@@ -182,7 +121,7 @@ export const createInstamojoPayment = async (
     const amount = settings.applicationFee;
 
     const response = await axios.post(
-      "https://test.instamojo.com/api/1.1/payment-requests/",
+      "https://www.instamojo.com/api/1.1/payment-requests/",
       {
         amount: amount.toString(),
         purpose: `Application Fee - ${applicationId}`,
@@ -220,9 +159,70 @@ export const createInstamojoPayment = async (
     });
   } catch (error: any) {
     console.error(error.response?.data || error);
-    return res.status(500).json({ message: "Instamojo TEST failed" });
+    return res.status(500).json({ message: "Instamojo failed" });
   }
 };
+
+// export const createInstamojoPayment = async (
+//   req: StudentAuthRequest,
+//   res: Response
+// ) => {
+//   try {
+//     const { applicationId } = req.body;
+//     const student = req.student;
+//     if (!student) return res.status(401).json({ message: "Unauthorized" });
+
+//     const settings = await Settings.findOne({
+//       instituteId: student.instituteId,
+//     });
+
+//     if (!settings)
+//       return res.status(400).json({ message: "Settings not configured" });
+
+//     const amount = settings.applicationFee;
+
+//     const response = await axios.post(
+//       "https://test.instamojo.com/api/1.1/payment-requests/",
+//       {
+//         amount: amount.toString(),
+//         purpose: `Application Fee - ${applicationId}`,
+//         buyer_name: `${student.firstname} ${student.lastname}`,
+//         email: student.email,
+//         phone: student.mobileNo,
+//         redirect_url:
+//           "https://hikabackend.sonastar.com/api/payments/instamojo/redirect",
+//         webhook:
+//           "https://hikabackend.sonastar.com/api/payments/instamojo/webhook",
+//       },
+//       {
+//         headers: {
+//           "X-Api-Key": "354258c3f2d1eda35995dae1540db4b4",
+//           "X-Auth-Token": "7f76729963176d6cc7169105b0cd81f4",
+//         },
+//       }
+//     );
+
+//     const paymentRequest = response.data.payment_request;
+
+//     await Payment.create({
+//       studentId: student.studentId,
+//       applicationId,
+//       amount,
+//       instituteId: student.instituteId,
+//       orderId: paymentRequest.id,
+//       status: "pending",
+//       gateway: "instamojo",
+//     });
+
+//     return res.json({
+//       success: true,
+//       paymentUrl: paymentRequest.longurl,
+//     });
+//   } catch (error: any) {
+//     console.error(error.response?.data || error);
+//     return res.status(500).json({ message: "Instamojo TEST failed" });
+//   }
+// };
 
 // ========================================================
 // INSTAMOJO REDIRECT (Browser)
