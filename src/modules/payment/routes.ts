@@ -2,16 +2,23 @@ import express from "express";
 import { studentProtect } from "../../middlewares/studentAuth";
 import { protect } from "../../middlewares/auth";
 import {
-  createPayment,
-  verifyPayment,
+  createRazorpayPayment,
+  verifyRazorpayPayment,
+  createInstamojoPayment,
+  verifyInstamojoRedirect,
+  instamojoWebhook,
   listPayments,
 } from "./controller";
 
 const router = express.Router();
 
 // 👨‍🎓 Student
-router.post("/create", studentProtect, createPayment);
-router.post("/verify", verifyPayment);
+router.post("/razorpay/create", studentProtect, createRazorpayPayment);
+router.post("/razorpay/verify", verifyRazorpayPayment);
+
+router.post("/instamojo/create", studentProtect, createInstamojoPayment);
+router.get("/instamojo/redirect", verifyInstamojoRedirect); // browser redirect
+router.post("/instamojo/webhook", instamojoWebhook); // server to server
 
 // 👨‍💼 Admin
 router.get("/", protect, listPayments);
