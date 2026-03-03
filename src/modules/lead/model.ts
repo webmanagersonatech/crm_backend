@@ -16,6 +16,7 @@ export interface ILead extends Document {
   email?: string;
   isduplicate: boolean;
   duplicateReason?: string;
+  medium?: string;
   country?: string;
   state?: string;
   city?: string;
@@ -58,7 +59,7 @@ const LeadSchema = new Schema<ILead>(
     ugDegree: { type: String },
     applicationId: { type: String },
     phoneNumber: { type: String, },
-
+    medium: { type: String },
     isduplicate: {
       type: Boolean,
       default: false,

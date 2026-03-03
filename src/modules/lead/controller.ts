@@ -132,6 +132,8 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   res.json(lead);
 };
+
+
 export const createThirdPartyLead = async (
   req: AuthRequest,
   res: Response
@@ -166,7 +168,7 @@ export const createThirdPartyLead = async (
   const firstFollowUp = {
     status: "New",
     calltaken: fullName || "Third Party Vendor",
-    communication: value.communication || "Call",
+    communication: "Phone",
     followUpDate: now,
     description: `Lead given by ${fullName || "Third Party Vendor"}`,
   };
@@ -179,6 +181,7 @@ export const createThirdPartyLead = async (
     leadSource: "offline",
     createdBy,
     instituteId,
+    communication: "Phone",
     followups: [firstFollowUp],
     followUpDate: now,
     isduplicate: existingLeads.length > 0,
@@ -192,228 +195,228 @@ export const createThirdPartyLead = async (
   });
 };
 
-export const bulkUploadLeads = async (req: any, res: any) => {
-  let filePath: string | null = null;
+// export const bulkUploadLeads = async (req: any, res: any) => {
+//   let filePath: string | null = null;
 
-  try {
-    // ============================
-    // ✅ BASIC VALIDATION
-    // ============================
+//   try {
+//     // ============================
+//     // ✅ BASIC VALIDATION
+//     // ============================
 
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "CSV file required",
-      });
-    }
+//     if (!req.file) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "CSV file required",
+//       });
+//     }
 
-    const createdBy = req.user?.id;
-    const instituteId = req.user?.instituteId;
+//     const createdBy = req.user?.id;
+//     const instituteId = req.user?.instituteId;
 
-    if (!createdBy || !instituteId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+//     if (!createdBy || !instituteId) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
 
-    filePath = path.resolve(req.file.path);
-    const rows: any[] = [];
+//     filePath = path.resolve(req.file.path);
+//     const rows: any[] = [];
 
-    // ============================
-    // ✅ READ CSV
-    // ============================
+//     // ============================
+//     // ✅ READ CSV
+//     // ============================
 
-    await new Promise((resolve, reject) => {
-      fs.createReadStream(filePath!)
-        .pipe(csv())
-        .on("data", (data) => rows.push(data))
-        .on("end", resolve)
-        .on("error", reject);
-    });
+//     await new Promise((resolve, reject) => {
+//       fs.createReadStream(filePath!)
+//         .pipe(csv())
+//         .on("data", (data) => rows.push(data))
+//         .on("end", resolve)
+//         .on("error", reject);
+//     });
 
-    if (!rows.length) {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({
-        success: false,
-        message: "CSV is empty",
-      });
-    }
+//     if (!rows.length) {
+//       fs.unlinkSync(filePath);
+//       return res.status(400).json({
+//         success: false,
+//         message: "CSV is empty",
+//       });
+//     }
 
-    // ============================
-    // ✅ HELPER: SAFE DATE PARSER
-    // ============================
+//     // ============================
+//     // ✅ HELPER: SAFE DATE PARSER
+//     // ============================
 
-    const parseValidDate = (value: any): Date | null => {
-      if (!value || value === "") return null;
-      const date = new Date(value);
-      return isNaN(date.getTime()) ? null : date;
-    };
+//     const parseValidDate = (value: any): Date | null => {
+//       if (!value || value === "") return null;
+//       const date = new Date(value);
+//       return isNaN(date.getTime()) ? null : date;
+//     };
 
-    // ============================
-    // ✅ STEP 1: BASIC SHEET VALIDATION
-    // ============================
+//     // ============================
+//     // ✅ STEP 1: BASIC SHEET VALIDATION
+//     // ============================
 
-    const errors: { row: number; field: string; message: string }[] = [];
+//     const errors: { row: number; field: string; message: string }[] = [];
 
-    rows.forEach((row, index) => {
-      const rowNumber = index + 2;
+//     rows.forEach((row, index) => {
+//       const rowNumber = index + 2;
 
-      let phone = row.phoneNumber?.toString().trim();
+//       let phone = row.phoneNumber?.toString().trim();
 
-      if (!phone) {
-        errors.push({
-          row: rowNumber,
-          field: "phoneNumber",
-          message: "Phone number is required",
-        });
-        return;
-      }
+//       if (!phone) {
+//         errors.push({
+//           row: rowNumber,
+//           field: "phoneNumber",
+//           message: "Phone number is required",
+//         });
+//         return;
+//       }
 
-      // Remove non-digits
-      phone = phone.replace(/\D/g, "");
+//       // Remove non-digits
+//       phone = phone.replace(/\D/g, "");
 
-      if (phone.length !== 10) {
-        errors.push({
-          row: rowNumber,
-          field: "phoneNumber",
-          message: "Phone number must be exactly 10 digits",
-        });
-        return;
-      }
+//       if (phone.length !== 10) {
+//         errors.push({
+//           row: rowNumber,
+//           field: "phoneNumber",
+//           message: "Phone number must be exactly 10 digits",
+//         });
+//         return;
+//       }
 
-      row.phoneNumber = phone;
+//       row.phoneNumber = phone;
 
-      if (!row.candidateName || row.candidateName.trim() === "") {
-        errors.push({
-          row: rowNumber,
-          field: "candidateName",
-          message: "Candidate name is required",
-        });
-      }
-    });
+//       if (!row.candidateName || row.candidateName.trim() === "") {
+//         errors.push({
+//           row: rowNumber,
+//           field: "candidateName",
+//           message: "Candidate name is required",
+//         });
+//       }
+//     });
 
-    if (errors.length > 0) {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({
-        success: false,
-        message: "Sheet validation failed",
-        errors,
-      });
-    }
+//     if (errors.length > 0) {
+//       fs.unlinkSync(filePath);
+//       return res.status(400).json({
+//         success: false,
+//         message: "Sheet validation failed",
+//         errors,
+//       });
+//     }
 
-    // ============================
-    // ✅ STEP 2: CHECK DB DUPLICATES
-    // ============================
+//     // ============================
+//     // ✅ STEP 2: CHECK DB DUPLICATES
+//     // ============================
 
-    const phoneNumbers = rows.map((r) => r.phoneNumber);
+//     const phoneNumbers = rows.map((r) => r.phoneNumber);
 
-    const existingLeads = await Lead.find({
-      phoneNumber: { $in: phoneNumbers },
-      instituteId,
-    }).select("phoneNumber leadId");
+//     const existingLeads = await Lead.find({
+//       phoneNumber: { $in: phoneNumbers },
+//       instituteId,
+//     }).select("phoneNumber leadId");
 
-    const existingMap = new Map<string, string>();
+//     const existingMap = new Map<string, string>();
 
-    existingLeads.forEach((lead: any) => {
-      existingMap.set(lead.phoneNumber, lead.leadId);
-    });
+//     existingLeads.forEach((lead: any) => {
+//       existingMap.set(lead.phoneNumber, lead.leadId);
+//     });
 
-    // ============================
-    // ✅ STEP 3: PREPARE INSERT DATA
-    // ============================
+//     // ============================
+//     // ✅ STEP 3: PREPARE INSERT DATA
+//     // ============================
 
-    const leadsToInsert = [];
-    const sheetTracker = new Map<string, number>();
+//     const leadsToInsert = [];
+//     const sheetTracker = new Map<string, number>();
 
-    for (const row of rows) {
+//     for (const row of rows) {
 
-      // 🔹 Track sheet duplicate count
-      const count = sheetTracker.get(row.phoneNumber) || 0;
-      sheetTracker.set(row.phoneNumber, count + 1);
+//       // 🔹 Track sheet duplicate count
+//       const count = sheetTracker.get(row.phoneNumber) || 0;
+//       sheetTracker.set(row.phoneNumber, count + 1);
 
-      const isSheetDuplicate = count > 0;
-      const isSystemDuplicate = existingMap.has(row.phoneNumber);
+//       const isSheetDuplicate = count > 0;
+//       const isSystemDuplicate = existingMap.has(row.phoneNumber);
 
-      const isDuplicate = isSheetDuplicate || isSystemDuplicate;
+//       const isDuplicate = isSheetDuplicate || isSystemDuplicate;
 
-      let duplicateReason = null;
+//       let duplicateReason = null;
 
-      if (isSystemDuplicate) {
-        duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
-      } else if (isSheetDuplicate) {
-        duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
-      }
+//       if (isSystemDuplicate) {
+//         duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
+//       } else if (isSheetDuplicate) {
+//         duplicateReason = "A lead with this phone number already exists in our Software. Please review before follow-up.";
+//       }
 
-      const leadId = await generateUniqueLeadId(instituteId);
+//       const leadId = await generateUniqueLeadId(instituteId);
 
-      const safeDOB = parseValidDate(row.dateOfBirth);
-      const safeFollowUpDate = parseValidDate(row.followUpDate);
+//       const safeDOB = parseValidDate(row.dateOfBirth);
+//       const safeFollowUpDate = parseValidDate(row.followUpDate);
 
-      const followUp = {
-        status: row.status || "New",
-        communication: row.communication || "Offline",
-        followUpDate: safeFollowUpDate,
-        description: row.description || "",
-        calltaken: row.counsellorName || "",
-      };
+//       const followUp = {
+//         status: row.status || "New",
+//         communication: row.communication || "Offline",
+//         followUpDate: safeFollowUpDate,
+//         description: row.description || "",
+//         calltaken: row.counsellorName || "",
+//       };
 
-      leadsToInsert.push({
-        leadId,
-        instituteId,
-        program: row.program || "",
-        candidateName: row.candidateName.trim(),
-        ugDegree: row.ugDegree || "",
-        phoneNumber: row.phoneNumber,
-        email: row.email || "",
-        dateOfBirth: safeDOB,
-        country: row.country || "",
-        state: row.state || "",
-        city: row.city || "",
-        counsellorName: row.counsellorName || "",
-        leadSource: row.leadSource || "offline",
-        status: row.status || "New",
-        communication: row.communication || "Offline",
-        followUpDate: safeFollowUpDate,
-        description: row.description || "",
-        followups: [followUp],
-        createdBy,
-        isduplicate: isDuplicate,
-        duplicateReason,
-      });
-    }
+//       leadsToInsert.push({
+//         leadId,
+//         instituteId,
+//         program: row.program || "",
+//         candidateName: row.candidateName.trim(),
+//         ugDegree: row.ugDegree || "",
+//         phoneNumber: row.phoneNumber,
+//         email: row.email || "",
+//         dateOfBirth: safeDOB,
+//         country: row.country || "",
+//         state: row.state || "",
+//         city: row.city || "",
+//         counsellorName: row.counsellorName || "",
+//         leadSource: row.leadSource || "offline",
+//         status: row.status || "New",
+//         communication: row.communication || "Offline",
+//         followUpDate: safeFollowUpDate,
+//         description: row.description || "",
+//         followups: [followUp],
+//         createdBy,
+//         isduplicate: isDuplicate,
+//         duplicateReason,
+//       });
+//     }
 
-    // ============================
-    // ✅ STEP 4: INSERT
-    // ============================
+//     // ============================
+//     // ✅ STEP 4: INSERT
+//     // ============================
 
-    const insertedLeads = await Lead.insertMany(leadsToInsert, {
-      ordered: false,
-    });
+//     const insertedLeads = await Lead.insertMany(leadsToInsert, {
+//       ordered: false,
+//     });
 
-    fs.unlinkSync(filePath);
+//     fs.unlinkSync(filePath);
 
-    return res.json({
-      success: true,
-      message: "Bulk upload completed successfully 🚀",
-      totalRows: rows.length,
-      inserted: insertedLeads.length,
-      duplicatesInSystem: existingLeads.length,
-    });
+//     return res.json({
+//       success: true,
+//       message: "Bulk upload completed successfully 🚀",
+//       totalRows: rows.length,
+//       inserted: insertedLeads.length,
+//       duplicatesInSystem: existingLeads.length,
+//     });
 
-  } catch (error) {
-    console.error("Bulk Upload Error:", error);
+//   } catch (error) {
+//     console.error("Bulk Upload Error:", error);
 
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+//     if (filePath && fs.existsSync(filePath)) {
+//       fs.unlinkSync(filePath);
+//     }
 
-    return res.status(500).json({
-      success: false,
-      message: "Bulk upload failed",
-    });
-  }
-};
+//     return res.status(500).json({
+//       success: false,
+//       message: "Bulk upload failed",
+//     });
+//   }
+// };
 
 
 
