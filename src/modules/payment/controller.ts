@@ -7,6 +7,7 @@ import Settings from "../settings/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import { createPaymentSchema } from "./payment.sanitize";
 import Application from "../applications/model";
+import axios from "axios";
 
 
 // Define interfaces for your data types
@@ -156,65 +157,54 @@ const createInstamojoPayment = async (
   amount: number,
   settings: Settings
 ) => {
-  // Configure Instamojo
-  Instamojo.setKeys(
-    settings.paymentCredentials.apiKey || process.env.INSTAMOJO_API_KEY!,
-    settings.paymentCredentials.authToken || process.env.INSTAMOJO_AUTH_TOKEN!
-  );
-
-  // Set sandbox mode based on environment
-  Instamojo.isSandboxMode(process.env.NODE_ENV !== 'production');
-
-  const data = new Instamojo.PaymentData();
-  data.purpose = `Application Fee for ${applicationId}`;
-  data.amount = amount;
-  data.buyer_name = `${student.firstname} ${student.lastname}`;
-  data.email = student.email;
-  data.phone = student.mobileNo;
-  data.send_email = true;
-  data.send_sms = true;
-  data.allow_repeated_payments = false;
-  // Your live frontend URL
-  data.redirect_url = `https://hikaapp.sonastar.com/payment/instamojo-callback`;
-  
-  // Your live backend URL
-  data.webhook_url = `https://hikabackend.sonastar.com/api/payments/instamojo-webhook`;
-
   try {
-    const response = await new Promise<any>((resolve, reject) => {
-      Instamojo.createPayment(data, (error: any, response: any) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(response);
-        }
-      });
+    const BASE_URL =
+      process.env.NODE_ENV === "production"
+        ? "https://api.instamojo.com"
+        : "https://test-api.instamojo.com";
+
+    const response = await axios.post(
+      `${BASE_URL}/v2/payment_requests/`,
+      {
+        amount: amount,
+        purpose: `Application Fee - ${applicationId}`,
+        buyer_name: `${student.firstname} ${student.lastname}`,
+        email: student.email,
+        phone: student.mobileNo,
+        redirect_url: `https://hikaapp.sonastar.com/payment/instamojo-callback`,
+      },
+      {
+        headers: {
+          "X-Api-Key":
+            settings.paymentCredentials.apiKey ||
+            process.env.INSTAMOJO_API_KEY!,
+          "X-Auth-Token":
+            settings.paymentCredentials.authToken ||
+            process.env.INSTAMOJO_AUTH_TOKEN!,
+        },
+      }
+    );
+
+    const paymentRequest = response.data;
+
+    await Payment.create({
+      studentId: student.studentId,
+      applicationId,
+      amount,
+      instituteId: student.instituteId,
+      orderId: paymentRequest.id,
+      status: "pending",
+      gateway: "instamojo",
     });
 
-    if (response.success) {
-      // Create payment record
-      const payment = await Payment.create({
-        studentId: student.studentId,
-        applicationId,
-        amount,
-        instituteId: student.instituteId,
-        orderId: response.payment_request.id,
-        status: "pending",
-        gateway: "instamojo",
-      });
+    return res.json({
+      success: true,
+      gateway: "instamojo",
+      paymentUrl: paymentRequest.longurl,
+    });
 
-      return res.json({
-        success: true,
-        gateway: "instamojo",
-        paymentRequest: response.payment_request,
-        paymentId: payment._id,
-        longurl: response.payment_request.longurl,
-      });
-    } else {
-      throw new Error("Instamojo payment creation failed");
-    }
-  } catch (error) {
-    console.error("Instamojo Error:", error);
+  } catch (error: any) {
+    console.error("Instamojo Error:", error.response?.data || error.message);
     return res.status(500).json({
       success: false,
       message: "Failed to create Instamojo payment",
