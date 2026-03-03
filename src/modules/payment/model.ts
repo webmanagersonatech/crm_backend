@@ -7,7 +7,7 @@ export interface IPayment extends Document {
   orderId: string;       // Razorpay Order ID
   paymentId?: string;    // Razorpay Payment ID
   status: "pending" | "paid" | "failed";
-  gateway: "razorpay";
+  gateway: "razorpay" | "instamojo";
   createdAt: Date;   // ✅ add this
   updatedAt: Date;
 }
@@ -49,7 +49,7 @@ const PaymentSchema: Schema = new Schema(
 
     gateway: {
       type: String,
-      default: "razorpay",
+      enum: ["razorpay", "instamojo"],
     },
   },
   { timestamps: true }

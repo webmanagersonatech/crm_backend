@@ -4,6 +4,13 @@ export interface ISettings extends Document {
   instituteId: string;
   logo?: string; // Base64 string for institute logo
   courses?: string[]; // Array of course names or IDs
+  paymentMethod: 'razorpay' | 'instamojo';
+  paymentCredentials: {
+    keyId?: string;
+    keySecret?: string;
+    apiKey?: string;
+    authToken?: string;
+  };
   merchantId?: string;
   apiKey?: string;
   authToken?: string;
@@ -22,6 +29,16 @@ const SettingsSchema = new Schema<ISettings>(
     instituteId: { type: String, required: true, unique: true },
     logo: { type: String }, // Base64 encoded logo
     courses: [{ type: String }], // Multiple courses or course IDs
+    paymentMethod: {
+      type: String,
+      enum: ['razorpay', 'instamojo'],
+      required: true,
+    },
+
+    paymentCredentials: {
+      type: Schema.Types.Mixed,
+      required: true,
+    },
     merchantId: { type: String },
     applicationFee: {
       type: Number,

@@ -1,76 +1,54 @@
 import Joi from 'joi';
 
 export const settingsSchema = Joi.object({
-  instituteId: Joi.string().required().messages({
-    'any.required': 'Institute ID is required',
-    'string.empty': 'Institute ID cannot be empty',
-  }),
+  instituteId: Joi.string().required(),
 
   logo: Joi.string()
     .pattern(/^data:image\/(png|jpg|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/)
-    .optional()
-    .messages({
-      'string.pattern.base':
-        'Logo must be a valid Base64-encoded image (png, jpg, jpeg, gif, webp)',
-    }),
+    .optional(),
 
-  courses: Joi.array().items(Joi.string()).optional().messages({
-    'array.base': 'Courses must be an array of strings',
-  }),
+  courses: Joi.array().items(Joi.string()).optional(),
 
-  merchantId: Joi.string().optional(),
-  apiKey: Joi.string().optional(),
-  authToken: Joi.string().optional(),
-  applicationFee: Joi.number()
-    .min(0)
+  // ✅ Payment Method
+  paymentMethod: Joi.string()
+    .valid('razorpay', 'instamojo')
     .required()
     .messages({
-      'number.base': 'Application fee must be a number',
-      'number.min': 'Application fee cannot be negative',
-      'any.required': 'Application fee is required',
+      'any.only': 'Payment method must be razorpay or instamojo',
+      'any.required': 'Payment method is required',
     }),
 
-  /* 🔹 NEW: Applicant Age */
-  applicantAge: Joi.number()
-    .integer()
-    .min(1)
-    .max(100)
-    .required()
-    .messages({
-      'number.base': 'Applicant age must be a number',
-      'number.integer': 'Applicant age must be an integer',
-      'number.min': 'Applicant age must be at least 1',
-      'number.max': 'Applicant age cannot exceed 100',
-      'any.required': 'Applicant age is required',
+  // ✅ Payment Credentials
+  paymentCredentials: Joi.when('paymentMethod', {
+    is: 'razorpay',
+    then: Joi.object({
+      keyId: Joi.string().required(),
+      keySecret: Joi.string().required(),
+    }).required(),
+    otherwise: Joi.when('paymentMethod', {
+      is: 'instamojo',
+      then: Joi.object({
+        apiKey: Joi.string().required(),
+        authToken: Joi.string().required(),
+      }).required(),
     }),
-
-  contactEmail: Joi.string().email().optional().messages({
-    'string.email': 'Contact email must be a valid email address',
-  }),
-  academicYear: Joi.string().required().messages({
-    'any.required': 'Academic year is required',
-    'string.empty': 'Academic year cannot be empty',
   }),
 
-batchName: Joi.string()
-  .allow('')
-  .optional()
-  .messages({
-    'string.base': 'Batch name must be a string',
-  }),
+  applicationFee: Joi.number().min(0).required(),
 
-isApplicationOpen: Joi.boolean()
-  .optional()
-  .messages({
-    'boolean.base': 'Application status must be true or false',
-  }),
+  applicantAge: Joi.number().integer().min(1).max(100).required(),
+
+  academicYear: Joi.string().required(),
+
+  batchName: Joi.string().allow('').optional(),
+
+  isApplicationOpen: Joi.boolean().optional(),
+
+  contactEmail: Joi.string().email().optional(),
 
   contactNumber: Joi.string()
     .pattern(/^[0-9+\-\s()]{7,20}$/)
-    .optional()
-    .messages({
-      'string.pattern.base': 'Contact number must be valid',
-    }),
+    .optional(),
 
   address: Joi.string().optional(),
 });
