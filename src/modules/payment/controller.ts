@@ -149,6 +149,8 @@ const createRazorpayPayment = async (
 // =============================
 // INSTAMOJO PAYMENT CREATION
 // =============================
+// payments/controller.ts - Update the createInstamojoPayment function
+
 const createInstamojoPayment = async (
   req: Request,
   res: Response,
@@ -158,56 +160,71 @@ const createInstamojoPayment = async (
   settings: Settings
 ) => {
   try {
-    const BASE_URL =
-      process.env.NODE_ENV === "production"
-        ? "https://api.instamojo.com"
-        : "https://test-api.instamojo.com";
+    // Use v1.1 API endpoint (not v2)
+    const BASE_URL = process.env.NODE_ENV === "production"
+      ? "https://www.instamojo.com/api/1.1"
+      : "https://test.instamojo.com/api/1.1";
+
+    // For v1.1 API, the payload format is different
+    const payload = {
+      purpose: `Application Fee - ${applicationId}`,
+      amount: amount,
+      buyer_name: `${student.firstname} ${student.lastname}`,
+      email: student.email,
+      phone: student.mobileNo,
+      redirect_url: `${process.env.FRONTEND_URL}/payment?status=success&payment_request_id=`,
+      webhook: `${process.env.BACKEND_URL}/api/payments/instamojo-webhook`,
+      allow_repeated_payments: false,
+      send_email: false,
+      send_sms: false
+    };
 
     const response = await axios.post(
-      `${BASE_URL}/v2/payment_requests/`,
-      {
-        amount: amount,
-        purpose: `Application Fee - ${applicationId}`,
-        buyer_name: `${student.firstname} ${student.lastname}`,
-        email: student.email,
-        phone: student.mobileNo,
-        redirect_url: `https://hikaapp.sonastar.com/payment/instamojo-callback`,
-      },
+      `${BASE_URL}/payment-requests/`,
+      payload,
       {
         headers: {
-          "X-Api-Key":
-            settings.paymentCredentials.apiKey ||
-            process.env.INSTAMOJO_API_KEY!,
-          "X-Auth-Token":
-            settings.paymentCredentials.authToken ||
-            process.env.INSTAMOJO_AUTH_TOKEN!,
+          "X-Api-Key": settings.paymentCredentials.apiKey || process.env.INSTAMOJO_API_KEY!,
+          "X-Auth-Token": settings.paymentCredentials.authToken || process.env.INSTAMOJO_AUTH_TOKEN!,
+          "Content-Type": "application/x-www-form-urlencoded"
         },
       }
     );
 
-    const paymentRequest = response.data;
+    // v1.1 response structure is different
+    if (response.data.success) {
+      const paymentRequest = response.data.payment_request;
 
-    await Payment.create({
-      studentId: student.studentId,
-      applicationId,
-      amount,
-      instituteId: student.instituteId,
-      orderId: paymentRequest.id,
-      status: "pending",
-      gateway: "instamojo",
-    });
+      await Payment.create({
+        studentId: student.studentId,
+        applicationId,
+        amount,
+        instituteId: student.instituteId,
+        orderId: paymentRequest.id,
+        status: "pending",
+        gateway: "instamojo",
+      });
 
-    return res.json({
-      success: true,
-      gateway: "instamojo",
-      paymentUrl: paymentRequest.longurl,
-    });
+      return res.json({
+        success: true,
+        gateway: "instamojo",
+        longurl: paymentRequest.longurl, // Make sure this matches what frontend expects
+        paymentId: paymentRequest.id
+      });
+    } else {
+      throw new Error(response.data.message || "Instamojo payment creation failed");
+    }
 
   } catch (error: any) {
-    console.error("Instamojo Error:", error.response?.data || error.message);
+    console.error("Instamojo Error Details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    
     return res.status(500).json({
       success: false,
-      message: "Failed to create Instamojo payment",
+      message: "Failed to create Instamojo payment: " + (error.response?.data?.message || error.message),
     });
   }
 };
@@ -288,11 +305,15 @@ export const verifyPayment = async (req: Request, res: Response) => {
 // =============================
 // INSTAMOJO CALLBACK
 // =============================
+// Update the instamojoCallback function
 export const instamojoCallback = async (req: Request, res: Response) => {
   try {
+    // v1.1 callback sends different parameters
     const { payment_request_id, payment_id, payment_status } = req.body;
 
-    if (payment_status === 'Credit') {
+    console.log("Instamojo Callback Received:", { payment_request_id, payment_id, payment_status });
+
+    if (payment_status === 'Credit' || payment_status === 'success') {
       const payment = await Payment.findOneAndUpdate(
         { orderId: payment_request_id },
         {
@@ -308,15 +329,21 @@ export const instamojoCallback = async (req: Request, res: Response) => {
           { paymentStatus: "Paid" },
           { new: true }
         );
+        
+        console.log(`Payment ${payment_id} processed successfully for application ${payment.applicationId}`);
       }
 
-      // Redirect to success page
-      return res.redirect(`${process.env.FRONTEND_URL}/dashboard?payment=success`);
+      // Redirect to frontend with success status and payment details
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/payment?status=success&payment_id=${payment_id}&request_id=${payment_request_id}`
+      );
     } else {
-      return res.redirect(`${process.env.FRONTEND_URL}/payment?status=failed`);
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/payment?status=failed&request_id=${payment_request_id}`
+      );
     }
   } catch (error) {
-    console.error(error);
+    console.error("Instamojo Callback Error:", error);
     return res.redirect(`${process.env.FRONTEND_URL}/payment?status=error`);
   }
 };
