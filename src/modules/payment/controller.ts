@@ -227,11 +227,22 @@ export const createInstamojoPayment = async (
 // ========================================================
 // INSTAMOJO REDIRECT (Browser)
 // ========================================================
+// export const verifyInstamojoRedirect = async (
+//   req: Request,
+//   res: Response
+// ) => {
+//   return res.redirect("https://hikaapp.sonastar.com/payment-success");
+// };
+
 export const verifyInstamojoRedirect = async (
   req: Request,
   res: Response
 ) => {
-  return res.redirect("https://hikaapp.sonastar.com/payment-success");
+  const { payment_status, payment_request_id } = req.query;
+
+  return res.redirect(
+    `https://hikaapp.sonastar.com/payment?status=${payment_status}&orderId=${payment_request_id}`
+  );
 };
 
 // ========================================================
