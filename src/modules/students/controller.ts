@@ -623,7 +623,7 @@ export const getpaymentrelateddata = async (
 
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
-    }).select("applicationFee");
+    }).select("applicationFee paymentMethod");
 
     return res.status(200).json({
       success: true,
@@ -632,7 +632,8 @@ export const getpaymentrelateddata = async (
         email: student.email,
         mobileNo: student.mobileNo,
         applicationId: student.applicationId,
-        applicationFee: settingsDoc?.applicationFee || 0
+        applicationFee: settingsDoc?.applicationFee || 0,
+        paymentMethod:settingsDoc?.paymentMethod
       },
     });
   } catch (err) {

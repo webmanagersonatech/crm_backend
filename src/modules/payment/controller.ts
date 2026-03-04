@@ -7,10 +7,10 @@ import Settings from "../settings/model";
 import Application from "../applications/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+// const razorpay = new Razorpay({
+//   key_id: process.env.RAZORPAY_KEY_ID!,
+//   key_secret: process.env.RAZORPAY_KEY_SECRET!,
+// });
 
 // ========================================================
 // RAZORPAY CREATE
@@ -29,6 +29,11 @@ export const createRazorpayPayment = async (
     });
     if (!settings)
       return res.status(400).json({ message: "Settings not configured" });
+
+    const razorpay = new Razorpay({
+      key_id: settings.paymentCredentials.keyId,
+      key_secret: settings.paymentCredentials.keySecret,
+    });
 
     const amount = settings.applicationFee;
 
@@ -51,7 +56,7 @@ export const createRazorpayPayment = async (
     return res.json({
       success: true,
       orderId: order.id,
-      key: process.env.RAZORPAY_KEY_ID,
+      key: settings.paymentCredentials.keyId,
       amount: order.amount,
     });
   } catch (error) {
@@ -70,31 +75,42 @@ export const verifyRazorpayPayment = async (
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
 
+    const payment:any= await Payment.findOne({ orderId: razorpay_order_id });
+
+    if (!payment)
+      return res.status(404).json({ message: "Payment not found" });
+
+    // ✅ Fetch institute settings
+    const settings = await Settings.findOne({
+      instituteId: payment.instituteId,
+    });
+
+    if (!settings?.paymentCredentials?.keySecret)
+      return res.status(400).json({ message: "Payment config missing" });
+
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
     const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET!)
+      .createHmac("sha256", settings.paymentCredentials.keySecret)
       .update(body)
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature)
       return res.status(400).json({ message: "Invalid signature" });
 
-    const payment = await Payment.findOneAndUpdate(
+    await Payment.findOneAndUpdate(
       { orderId: razorpay_order_id },
-      { status: "paid", paymentId: razorpay_payment_id },
-      { new: true }
+      { status: "paid", paymentId: razorpay_payment_id }
     );
 
-    if (payment) {
-      await Application.findOneAndUpdate(
-        { applicationId: payment.applicationId },
-        { paymentStatus: "Paid" }
-      );
-    }
+    await Application.findOneAndUpdate(
+      { applicationId: payment.applicationId },
+      { paymentStatus: "Paid" }
+    );
 
     return res.json({ success: true });
-  } catch {
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: "Verification failed" });
   }
 };
@@ -163,76 +179,6 @@ export const createInstamojoPayment = async (
   }
 };
 
-// export const createInstamojoPayment = async (
-//   req: StudentAuthRequest,
-//   res: Response
-// ) => {
-//   try {
-//     const { applicationId } = req.body;
-//     const student = req.student;
-//     if (!student) return res.status(401).json({ message: "Unauthorized" });
-
-//     const settings = await Settings.findOne({
-//       instituteId: student.instituteId,
-//     });
-
-//     if (!settings)
-//       return res.status(400).json({ message: "Settings not configured" });
-
-//     const amount = settings.applicationFee;
-
-//     const response = await axios.post(
-//       "https://test.instamojo.com/api/1.1/payment-requests/",
-//       {
-//         amount: amount.toString(),
-//         purpose: `Application Fee - ${applicationId}`,
-//         buyer_name: `${student.firstname} ${student.lastname}`,
-//         email: student.email,
-//         phone: student.mobileNo,
-//         redirect_url:
-//           "https://hikabackend.sonastar.com/api/payments/instamojo/redirect",
-//         webhook:
-//           "https://hikabackend.sonastar.com/api/payments/instamojo/webhook",
-//       },
-//       {
-//         headers: {
-//           "X-Api-Key": "354258c3f2d1eda35995dae1540db4b4",
-//           "X-Auth-Token": "7f76729963176d6cc7169105b0cd81f4",
-//         },
-//       }
-//     );
-
-//     const paymentRequest = response.data.payment_request;
-
-//     await Payment.create({
-//       studentId: student.studentId,
-//       applicationId,
-//       amount,
-//       instituteId: student.instituteId,
-//       orderId: paymentRequest.id,
-//       status: "pending",
-//       gateway: "instamojo",
-//     });
-
-//     return res.json({
-//       success: true,
-//       paymentUrl: paymentRequest.longurl,
-//     });
-//   } catch (error: any) {
-//     console.error(error.response?.data || error);
-//     return res.status(500).json({ message: "Instamojo TEST failed" });
-//   }
-// };
-
-// ========================================================
-// INSTAMOJO REDIRECT (Browser)
-// ========================================================
-// export const verifyInstamojoRedirect = async (
-//   req: Request,
-//   res: Response
-// ) => {
-//   return res.redirect("https://hikaapp.sonastar.com/payment-success");
-// };
 
 export const verifyInstamojoRedirect = async (
   req: Request,
