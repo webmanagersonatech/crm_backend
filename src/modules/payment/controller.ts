@@ -242,10 +242,16 @@ export const instamojoWebhook = async (
   res: Response
 ) => {
   try {
+    console.log("Webhook Body:", req.body);
+
     const { payment_id, payment_request_id, payment_status } = req.body;
 
-    if (payment_status !== "Credit")
+    if (payment_status !== "Credit") {
+      console.log("Payment not credit");
       return res.status(200).send("Ignored");
+    }
+
+    console.log("Payment Success Webhook Triggered");
 
     const payment = await Payment.findOneAndUpdate(
       { orderId: payment_request_id },
@@ -258,10 +264,14 @@ export const instamojoWebhook = async (
         { applicationId: payment.applicationId },
         { paymentStatus: "Paid" }
       );
+      console.log("Application updated");
+    } else {
+      console.log("Payment not found in DB");
     }
 
     return res.status(200).send("OK");
-  } catch {
+  } catch (error) {
+    console.log("Webhook Error:", error);
     return res.status(500).send("Webhook failed");
   }
 };
