@@ -244,10 +244,12 @@ export const instamojoWebhook = async (
   try {
     console.log("Webhook Body:", req.body);
 
-    const { payment_id, payment_request_id, payment_status } = req.body;
+    const { payment_id, payment_request_id, status } = req.body;
 
-    if (payment_status !== "Credit") {
-      console.log("Payment not credit");
+    const normalizedStatus = status?.toString().toLowerCase().trim();
+
+    if (normalizedStatus !== "credit") {
+      console.log("Payment not credit:", status);
       return res.status(200).send("Ignored");
     }
 
