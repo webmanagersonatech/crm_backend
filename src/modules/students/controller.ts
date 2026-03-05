@@ -11,6 +11,7 @@ import FormManage from "../form-manage/model";
 import { AuthRequest } from "../auth";
 import Application from "../applications/model";
 import Payments from "../payment/model";
+import Institution from "../institutions/model";
 import path from 'path';
 import fs from 'fs';
 
@@ -27,21 +28,63 @@ const generatePassword = (length = 8) => {
 };
 
 // Send password email
-const sendPasswordEmail = async (email: string, firstname: string, password: string) => {
+const sendPasswordEmail = async (
+  email: string,
+  firstname: string,
+  password: string,
+  instituteName: string,
+  supportEmail: string,
+  phone: string,
+  instituteId: string
+) => {
   const emailData = {
-    sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
+    sender: { email: "no-reply@sonatech.ac.in", name: "Hika" },
     to: [{ email, name: firstname || "Student" }],
     subject: "Your Account Password",
     htmlContent: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Welcome to Sona Institute</h2>
-        <p>Hello <b>${firstname || "Student"}</b>,</p>
-        <p>Your account has been created successfully. Here is your password:</p>
-        <h3 style="color:#2563eb;">${password}</h3>
-        <p>Please change your password after logging in for security.</p>
-        <hr />
-        <p style="font-size: 12px; color: #555;">Sona Institute — Secure Account</p>
-      </div>
+    <div style="font-family: Arial, sans-serif; padding:20px; line-height:1.6">
+      
+      <p>Greetings from <b>${instituteName}</b>.</p>
+
+      <p>Thank you for completing the registration for the <b>Online Application 2026 – Admission</b>.</p>
+
+      <p>Your login credentials are given below:</p>
+
+      <p>
+      <b>Email:</b> ${email}<br/>
+      <b>Password:</b> ${password}
+      </p>
+
+      <p>You may log in using the following link:</p>
+
+      <p>
+      <a href="https://hikabackend.sonastar.com/api/institutions/apply/${instituteId}" 
+      style="background:#2563eb;color:white;padding:10px 16px;text-decoration:none;border-radius:6px">
+      Application Login
+      </a>
+      </p>
+
+      <p>For security reasons, we strongly recommend that you change your password after your first login.</p>
+
+      <p>Please keep your login credentials confidential and do not share them with anyone.</p>
+
+      <p>If you face any issues while logging in or completing your application, feel free to contact our Admission Office:</p>
+
+      <p>
+      📞 Phone: ${phone}<br/>
+      📧 Email: ${supportEmail}
+      </p>
+
+      <br/>
+
+      <p>We wish you all the best in completing your application and look forward to welcoming you to our institution.</p>
+
+      <p>
+      Warm regards,<br/>
+      <b>${instituteName}</b>
+      </p>
+
+    </div>
     `,
   };
 
@@ -58,6 +101,7 @@ export const createStudent = async (req: Request, res: Response) => {
     }
 
     const { email, firstname, mobileNo, instituteId } = value;
+
     const existing = await Student.findOne({ instituteId, email });
     if (existing) {
       return res.status(400).json({ message: "Student already exists" });
@@ -66,6 +110,11 @@ export const createStudent = async (req: Request, res: Response) => {
     const existingMobile = await Student.findOne({ instituteId, mobileNo });
     if (existingMobile) {
       return res.status(400).json({ message: "Mobile number already exists" });
+    }
+    const institution = await Institution.findOne({ instituteId });
+
+    if (!institution) {
+      return res.status(404).json({ message: "Institution not found" });
     }
 
     // ✅ Generate plain password ONLY
@@ -78,7 +127,15 @@ export const createStudent = async (req: Request, res: Response) => {
     });
 
     // Send password to email
-    await sendPasswordEmail(email, firstname, plainPassword);
+    await sendPasswordEmail(
+      email,
+      firstname,
+      plainPassword,
+      institution.name,
+      institution.email || "",
+      institution.phoneNo || "",
+      instituteId
+    );
 
     res.status(201).json({
       success: true,
@@ -446,19 +503,22 @@ export const updateStudent = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
+    // Hash password if it is being updated
     if (updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
-
-      // Optionally send updated password to email
-      const student = await Student.findById(id);
-
-      if (student) await sendPasswordEmail(student.email, student.firstname, req.body.password);
     }
 
     const updatedStudent = await Student.findByIdAndUpdate(id, updates, { new: true });
-    if (!updatedStudent) return res.status(404).json({ message: "Student not found" });
 
-    res.status(200).json({ success: true, data: updatedStudent });
+    if (!updatedStudent) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedStudent
+    });
+
   } catch (err) {
     console.error("Error updating student:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -633,7 +693,7 @@ export const getpaymentrelateddata = async (
         mobileNo: student.mobileNo,
         applicationId: student.applicationId,
         applicationFee: settingsDoc?.applicationFee || 0,
-        paymentMethod:settingsDoc?.paymentMethod
+        paymentMethod: settingsDoc?.paymentMethod
       },
     });
   } catch (err) {
