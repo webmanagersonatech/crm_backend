@@ -67,10 +67,14 @@ const generateUniqueLeadId = async (instituteId: string) => {
 };
 
 export const createLead = async (req: AuthRequest, res: Response) => {
+
   const { error, value } = createLeadSchema.validate(req.body);
 
-  if (error) return res.status(400).json({ message: error.message });
 
+  if (error) return res.status(400).json({ message: error.message });
+  if (!value.followUpDate) {
+    value.followUpDate = new Date();
+  }
   const createdBy = req.user?.id;
   if (!createdBy) return res.status(401).json({ message: 'Not authorized' });
 
@@ -790,10 +794,11 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     } else if (user.role === "admin") {
       filter.instituteId = user.instituteId;
     } else if (user.role === "user") {
-      filter = { instituteId: user.instituteId,
+      filter = {
+        instituteId: user.instituteId,
         //  createdBy: user.id 
-        
-        };
+
+      };
     }
 
     // 🔹 Optional filters
@@ -905,6 +910,12 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       ...rest
     } = req.body;
 
+
+    const finalFollowUpDate =
+      followUpDate && followUpDate.trim() !== ""
+        ? new Date(followUpDate)
+        : new Date();
+
     const lead = await Lead.findById(id);
 
     if (!lead) {
@@ -944,8 +955,8 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       ? new Date(lead.followUpDate).toISOString().split("T")[0]
       : "";
 
-    const newDate = followUpDate
-      ? new Date(followUpDate).toISOString().split("T")[0]
+    const newDate = finalFollowUpDate
+      ? new Date(finalFollowUpDate).toISOString().split("T")[0]
       : "";
 
     const isFollowUpChanged =
@@ -962,7 +973,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         ...(phoneNumber !== undefined && { phoneNumber }),
         ...(status !== undefined && { status }),
         ...(communication !== undefined && { communication }),
-        ...(followUpDate !== undefined && { followUpDate }),
+        followUpDate: finalFollowUpDate,
         ...(description !== undefined && { description }),
         isduplicate,
         duplicateReason,
@@ -981,7 +992,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         followups: {
           status,
           communication,
-          followUpDate,
+          followUpDate: finalFollowUpDate,
           calltaken,
           description,
         },

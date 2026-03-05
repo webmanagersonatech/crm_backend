@@ -26,8 +26,14 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       leadFilter.instituteId = user.instituteId;
       appFilter.instituteId = user.instituteId;
     } else {
-      leadFilter = { instituteId: user.instituteId, createdBy: user.id };
-      appFilter = { instituteId: user.instituteId, userId: user.id };
+      leadFilter = {
+        instituteId: user.instituteId,
+        // createdBy: user.id 
+      };
+      appFilter = {
+        instituteId: user.instituteId,
+        // userId: user.id
+      };
     }
 
     // ------------------ CREATED DATE FILTER (for Leads & Applications only) ------------------

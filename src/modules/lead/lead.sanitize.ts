@@ -13,7 +13,7 @@ export const createLeadSchema = Joi.object({
   city: Joi.string().optional(),
   status: Joi.string().optional(),
   communication: Joi.string().optional(),
-  followUpDate: Joi.date().optional(),
+  followUpDate: Joi.date().optional().allow(null, ""),
   description: Joi.string().optional().allow(''),
   leadSource: Joi.string().optional(),
   applicationId: Joi.string().optional().allow(null, ""),
