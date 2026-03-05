@@ -1610,7 +1610,9 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
     } else if (user.role === 'user') {
-      filter = { instituteId: user.instituteId, userId: user._id }
+      filter = { instituteId: user.instituteId,
+        //  userId: user._id
+         }
     }
 
     // 🎯 Optional filters
@@ -1771,7 +1773,9 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
     } else if (user.role === 'user') {
-      filter = { instituteId: user.instituteId, userId: user._id }
+      filter = { instituteId: user.instituteId, 
+        // userId: user._id 
+      }
     }
 
     // 🎯 Optional filters (same filtering logic as listApplications)
