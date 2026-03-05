@@ -25,15 +25,17 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
     } else if (user.role === "admin") {
       leadFilter.instituteId = user.instituteId;
       appFilter.instituteId = user.instituteId;
-    } else {
-      leadFilter = {
-        instituteId: user.instituteId,
-        // createdBy: user.id 
-      };
-      appFilter = {
-        instituteId: user.instituteId,
-        // userId: user.id
-      };
+    } else if (user.role === "user") {
+
+      leadFilter.instituteId = user.instituteId;
+      appFilter.instituteId = user.instituteId;
+
+      // third party user -> only their leads
+      if (user.userType === "third_party") {
+        leadFilter.createdBy = user.id;
+        appFilter.userId = user.id;
+      }
+
     }
 
     // ------------------ CREATED DATE FILTER (for Leads & Applications only) ------------------
@@ -164,14 +166,20 @@ export const getNewAndFollowupLeads = async (req: AuthRequest, res: Response) =>
       }
     } else if (user.role === "admin") {
       leadBaseFilter.instituteId = user.instituteId;
-    } else {
+    } else if (user.role === "user") {
+
       leadBaseFilter.instituteId = user.instituteId;
-      leadBaseFilter.createdBy = user.id;
+
+      // third_party user -> only their leads
+      if (user.userType === "third_party") {
+        leadBaseFilter.createdBy = user.id;
+      }
     }
 
     // ------------------ CREATED DATE RANGE ------------------
     if (startDate || endDate) {
       const createdFilter: any = {};
+
       if (startDate) {
         const s = new Date(startDate as string);
         s.setHours(0, 0, 0, 0);
