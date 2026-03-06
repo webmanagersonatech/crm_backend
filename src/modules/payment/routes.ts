@@ -8,6 +8,7 @@ import {
   verifyInstamojoRedirect,
   instamojoWebhook,
   listPayments,
+  razorpayWebhook,
 } from "./controller";
 
 const router = express.Router();
@@ -15,6 +16,7 @@ const router = express.Router();
 // 👨‍🎓 Student
 router.post("/razorpay/create", studentProtect, createRazorpayPayment);
 router.post("/razorpay/verify", verifyRazorpayPayment);
+router.post("/razorpay/webhook", razorpayWebhook);
 
 router.post("/instamojo/create", studentProtect, createInstamojoPayment);
 router.get("/instamojo/redirect", verifyInstamojoRedirect); // browser redirect
