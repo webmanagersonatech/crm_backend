@@ -165,7 +165,7 @@ export const login = async (req: Request, res: Response) => {
       role: user.role,
       email: user.email,
       instituteId: user.instituteId,
-      userType: user.userType,
+  
     });
 
     // ---------------- Create/Update Login History ----------------
