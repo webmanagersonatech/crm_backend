@@ -75,7 +75,7 @@ export const verifyRazorpayPayment = async (
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
 
-    const payment:any= await Payment.findOne({ orderId: razorpay_order_id });
+    const payment: any = await Payment.findOne({ orderId: razorpay_order_id });
 
     if (!payment)
       return res.status(404).json({ message: "Payment not found" });
@@ -115,6 +115,60 @@ export const verifyRazorpayPayment = async (
   }
 };
 
+export const razorpayWebhook = async (req: Request, res: Response) => {
+  try {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    const signature = req.headers["x-razorpay-signature"] as string;
+
+    const body = JSON.stringify(req.body);
+
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret!)
+      .update(body)
+      .digest("hex");
+
+    if (expectedSignature !== signature) {
+      return res.status(400).json({ message: "Invalid webhook signature" });
+    }
+
+    const event = req.body.event;
+
+    if (event === "payment.captured") {
+      const paymentData = req.body.payload.payment.entity;
+
+      const orderId = paymentData.order_id;
+      const paymentId = paymentData.id;
+
+      const payment: any = await Payment.findOne({ orderId });
+
+      if (!payment) return res.status(404).json({ message: "Payment not found" });
+
+      if (payment.status === "paid") {
+        return res.json({ success: true });
+      }
+
+      await Payment.findOneAndUpdate(
+        { orderId },
+        {
+          status: "paid",
+          paymentId,
+        }
+      );
+
+      await Application.findOneAndUpdate(
+        { applicationId: payment.applicationId },
+        { paymentStatus: "Paid" }
+      );
+    }
+
+    return res.json({ success: true });
+
+  } catch (error) {
+    console.error("Webhook Error:", error);
+    return res.status(500).json({ message: "Webhook failed" });
+  }
+};
 // ========================================================
 // INSTAMOJO CREATE
 // ========================================================

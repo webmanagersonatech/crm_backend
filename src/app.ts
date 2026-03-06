@@ -29,11 +29,12 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://hika.sonastar.com','https://hikaapp.sonastar.com','https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
     credentials: true,
 }));
 
-app.use(express.urlencoded({ extended: true })); 
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100mb" }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(logger);
