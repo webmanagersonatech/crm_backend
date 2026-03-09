@@ -111,6 +111,23 @@ export const createStudent = async (req: Request, res: Response) => {
     if (existingMobile) {
       return res.status(400).json({ message: "Mobile number already exists" });
     }
+    const existingglobal: any = await Student.findOne({ email }).populate("institute");
+
+    if (existing) {
+      return res.status(400).json({
+        message: `Student already exists in ${existingglobal.institute?.name}`,
+      });
+    }
+
+    const existingmobileNo: any = await Student
+      .findOne({ mobileNo })
+      .populate("institute", "name");
+
+    if (existingmobileNo) {
+      return res.status(400).json({
+        message: `Mobile number already exists in ${existingmobileNo.institute?.name}`,
+      });
+    }
     const institution = await Institution.findOne({ instituteId });
 
     if (!institution) {
@@ -288,7 +305,7 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
         { email: { $regex: search, $options: "i" } },
         { studentId: { $regex: search, $options: "i" } },
         { admissionUniversityRegNo: { $regex: search, $options: "i" } },
-        
+
         { state: { $regex: search, $options: "i" } },
         { city: { $regex: search, $options: "i" } },
       ];
@@ -393,7 +410,7 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
         { email: { $regex: search, $options: "i" } },
         { studentId: { $regex: search, $options: "i" } },
         { admissionUniversityRegNo: { $regex: search, $options: "i" } },
-      
+
         { state: { $regex: search, $options: "i" } },
         { city: { $regex: search, $options: "i" } },
       ];
