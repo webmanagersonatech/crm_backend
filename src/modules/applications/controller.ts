@@ -1601,6 +1601,8 @@ export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
 export const listApplications = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user
+
+
     if (!user) return res.status(401).json({ message: 'Not authorized' })
 
     let filter: any = {}
@@ -1610,9 +1612,10 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
     } else if (user.role === 'user') {
-      filter = { instituteId: user.instituteId,
-        //  userId: user._id
-         }
+      filter = {
+        instituteId: user.instituteId,
+        userId: user.id
+      }
     }
 
     // 🎯 Optional filters
@@ -1773,8 +1776,9 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
     } else if (user.role === 'user') {
-      filter = { instituteId: user.instituteId, 
-        // userId: user._id 
+      filter = {
+        instituteId: user.instituteId,
+        userId: user.id
       }
     }
 

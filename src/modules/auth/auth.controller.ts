@@ -118,7 +118,94 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
+export const toggleTempAdminAccess = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
 
+    // Only superadmin can grant admin access
+    if (req.user.role !== "superadmin") {
+      return res.status(403).json({
+        status: false,
+        message: "Only superadmin can grant admin access.",
+      });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        status: false,
+        message: "User not found",
+      });
+    }
+
+    // Prevent modifying superadmin
+    if (user.role === "superadmin") {
+      return res.status(400).json({
+        status: false,
+        message: "Cannot modify superadmin",
+      });
+    }
+
+    // Toggle
+    const newTempAdmin = !user.tempAdminAccess;
+
+    user.tempAdminAccess = newTempAdmin;
+
+    // If enabled → role becomes admin
+    if (newTempAdmin) {
+      user.role = "admin";
+    } else {
+      user.role = "user";
+    }
+    user.tokenVersion += 1;
+
+    await user.save();
+
+    return res.status(200).json({
+      status: true,
+      message: newTempAdmin
+        ? "Temporary admin access granted"
+        : "Temporary admin access removed",
+      user,
+    });
+
+  } catch (err: any) {
+    console.error("Temp Admin Toggle Error:", err);
+    return res.status(500).json({
+      status: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+export const getTempAdminAccess = async (req: AuthRequest, res: Response) => {
+  try {
+
+    const user = await User.findById(req.user.id)
+      .select("tempAdminAccess role");
+
+    if (!user) {
+      return res.status(404).json({
+        status: false,
+        message: "User not found"
+      });
+    }
+
+    return res.json({
+      status: true,
+      tempAdminAccess: user.tempAdminAccess,
+      role: user.role
+    });
+
+  } catch (err: any) {
+    console.error("Temp Access Fetch Error:", err);
+    return res.status(500).json({
+      status: false,
+      message: "Server error"
+    });
+  }
+};
 
 export const login = async (req: Request, res: Response) => {
   try {
@@ -165,7 +252,8 @@ export const login = async (req: Request, res: Response) => {
       role: user.role,
       email: user.email,
       instituteId: user.instituteId,
-  
+      tokenVersion: user.tokenVersion
+
     });
 
     // ---------------- Create/Update Login History ----------------
@@ -313,7 +401,7 @@ export const listallUsers = async (req: AuthRequest, res: Response) => {
     }
 
     const users = await User.find(query)
-      .select("firstname lastname _id") // only name + _id
+      .select("firstname lastname _id role") // only name + _id
       .sort({ createdAt: -1 });
 
     return res.json(users);

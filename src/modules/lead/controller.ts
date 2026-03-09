@@ -686,11 +686,10 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     } else if (user.role === "admin") {
       filter.instituteId = user.instituteId;
     } else if (user.role === "user") {
-      filter.instituteId = user.instituteId;
-
-      if (user.userType === "third_party") {
-        filter.createdBy = user.id;
-      }
+      filter = {
+        instituteId: user.instituteId,
+        createdBy: user.id
+      };
     }
 
     // 🔹 Optional filters
@@ -795,11 +794,11 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     } else if (user.role === "admin") {
       filter.instituteId = user.instituteId;
     } else if (user.role === "user") {
-      filter.instituteId = user.instituteId;
+      filter = {
+        instituteId: user.instituteId,
+         createdBy: user.id 
 
-      if (user.userType === "third_party") {
-        filter.createdBy = user.id;
-      }
+      };
     }
 
     // 🔹 Optional filters

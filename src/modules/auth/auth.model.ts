@@ -16,6 +16,8 @@ export interface IUser extends Document {
   apiKey: { type: String, unique: true, sparse: true },
   lastLoginTimeDate?: Date;
   status: "active" | "inactive";
+  tokenVersion: number;
+  tempAdminAccess?: boolean;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -34,6 +36,8 @@ const UserSchema = new Schema<IUser>(
     instituteId: { type: String, required: true },
     lastLoginTimeDate: { type: Date, default: null },
     status: { type: String, enum: ["active", "inactive"], default: "inactive" },
+    tempAdminAccess: { type: Boolean, default: false },
+    tokenVersion: { type: Number, default: 0 }
   },
   { timestamps: true }
 );
