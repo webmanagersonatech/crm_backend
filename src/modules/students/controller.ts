@@ -288,6 +288,9 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
         { email: { $regex: search, $options: "i" } },
         { studentId: { $regex: search, $options: "i" } },
         { admissionUniversityRegNo: { $regex: search, $options: "i" } },
+        
+        { state: { $regex: search, $options: "i" } },
+        { city: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -390,6 +393,9 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
         { email: { $regex: search, $options: "i" } },
         { studentId: { $regex: search, $options: "i" } },
         { admissionUniversityRegNo: { $regex: search, $options: "i" } },
+      
+        { state: { $regex: search, $options: "i" } },
+        { city: { $regex: search, $options: "i" } },
       ];
     }
 
