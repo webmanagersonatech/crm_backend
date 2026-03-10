@@ -1466,7 +1466,28 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       personalDetails,
       educationDetails
     );
+    // Get form configuration
+    const formConfig = await formmanager.findOne({ instituteId });
 
+    const hasEducation =
+      Array.isArray(formConfig?.educationDetails) &&
+      formConfig.educationDetails.length > 0;
+
+    const hasPersonalDetails =
+      Array.isArray(personalDetails) && personalDetails.length > 0;
+
+    const hasEducationDetails =
+      Array.isArray(educationDetails) && educationDetails.length > 0;
+
+    let formStatus: "Incomplete" | "Complete" = "Incomplete";
+
+    if (hasPersonalDetails) {
+      if (hasEducation) {
+        formStatus = hasEducationDetails ? "Complete" : "Incomplete";
+      } else {
+        formStatus = "Complete";
+      }
+    }
 
 
     // ✅ Update document
@@ -1480,7 +1501,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.educationDetails = educationDetails
     application.applicantName = applicantName || application.applicantName
     application.searchText = searchText
-
+    application.formStatus = formStatus
     await application.save()
 
     const studentUpdateData: any = {
