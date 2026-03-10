@@ -1307,13 +1307,13 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     }
 
     // 🔐 Optional role restriction
-    if (
-      user.role !== "superadmin" &&
-      user.role !== "admin" &&
-      (!application.userId || application.userId.toString() !== user.id)
-    ) {
-      return res.status(403).json({ success: false, message: "Access denied" })
-    }
+    // if (
+    //   user.role !== "superadmin" &&
+    //   user.role !== "admin" &&
+    //   (!application.userId || application.userId.toString() !== user.id)
+    // ) {
+    //   return res.status(403).json({ success: false, message: "Access denied" })
+    // }
 
 
     const instituteId = req.body.instituteId || application.instituteId
