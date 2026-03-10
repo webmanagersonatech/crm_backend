@@ -538,7 +538,47 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const exportOthers = async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, phone, startDate, endDate, dataSource } = req.query;
+    const user = req.user;
 
+    let filter: any = {};
+
+    if (user.role === 'superadmin') {
+      if (req.query.instituteId) filter.instituteId = req.query.instituteId;
+    } else {
+      filter.instituteId = user.instituteId;
+    }
+
+    if (name) filter.name = { $regex: name, $options: 'i' };
+    if (phone) filter.phone = { $regex: phone, $options: 'i' };
+    if (dataSource) filter.dataSource = dataSource;
+
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+      if (startDate) dateFilter.$gte = startDate;
+      if (endDate) dateFilter.$lte = endDate;
+      filter.date = dateFilter;
+    }
+
+    // No pagination - get all records
+    const records = await Other.find(filter)
+      .sort({ createdAt: -1 })
+      .populate([
+        { path: 'creator', select: 'firstname lastname' },
+        { path: "institute", select: "name" }
+      ]);
+
+    res.json({
+      success: true,
+      data: records,
+    });
+
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
 
 // 🔹 List with pagination & filters
