@@ -759,7 +759,51 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     };
 
     const result = await Lead.paginate(filter, options);
-    res.json(result);
+    const statusMatch: any = {};
+
+    // 🔹 Role-based filters (same as your filter)
+    if (user.role === "superadmin") {
+      if (instituteId) statusMatch.instituteId = instituteId;
+    } else if (user.role === "admin") {
+      statusMatch.instituteId = user.instituteId;
+    } else if (user.role === "user") {
+      statusMatch.instituteId = user.instituteId;
+      statusMatch.createdBy = user.id;
+    }
+
+    // 🔹 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      statusMatch.createdAt = dateFilter;
+    }
+
+    const statusCounts = await Lead.aggregate([
+      { $match: statusMatch },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    res.json({
+      ...result,
+      statusCounts
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -796,7 +840,7 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     } else if (user.role === "user") {
       filter = {
         instituteId: user.instituteId,
-         createdBy: user.id 
+        createdBy: user.id
 
       };
     }

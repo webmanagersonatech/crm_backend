@@ -708,6 +708,17 @@ export const getpaymentrelateddata = async (
       instituteId: student.instituteId,
     }).select("applicationFee paymentMethod");
 
+
+    const applicationFee = settingsDoc?.applicationFee ?? 0;
+
+    // ✅ HANDLE ZERO FEE
+    if (applicationFee === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Application payment is not required.",
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: {
