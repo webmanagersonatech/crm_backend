@@ -3,7 +3,7 @@ import csv from "csv-parse";
 import XLSX from "xlsx";
 import Event from "./model";
 import { AuthRequest } from "../../middlewares/auth";
-
+import User from "../auth/auth.model";
 /* =========================
    CREATE SINGLE EVENT
 ========================= */
@@ -299,6 +299,25 @@ export const listEvents = async (req: AuthRequest, res: Response) => {
     const { page = 1, limit = 10, name, mobile, startDate, endDate, eventName } = req.query;
 
     const user = req.user!;
+
+    const currentuser = await User.findById(user.id).lean();
+
+    if (!currentuser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // ❌ Block third party users
+    if (currentuser.userType === "third_party") {
+      return res.status(403).json({
+        success: false,
+        message: "You have no access to this page"
+      });
+    }
+
+
     let filter: any = {};
 
     if (user.role === 'superadmin') {

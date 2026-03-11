@@ -587,6 +587,25 @@ export const listOthers = async (req: AuthRequest, res: Response) => {
     const { page = 1, limit = 10, name, phone, startDate, endDate, dataSource } = req.query;
     const user = req.user;
 
+
+
+    const currentuser = await User.findById(user.id).lean();
+
+    if (!currentuser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // ❌ Block third party users
+    if (currentuser.userType === "third_party") {
+      return res.status(403).json({
+        success: false,
+        message: "You have no access to this page"
+      });
+    }
+
     let filter: any = {};
 
     if (user.role === 'superadmin') {
