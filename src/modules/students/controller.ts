@@ -718,6 +718,9 @@ export const getpaymentrelateddata = async (
         message: "Application payment is not required.",
       });
     }
+    const gstPercentage = 18;
+    const gstAmount = (applicationFee * gstPercentage) / 100;
+    const totalAmount = applicationFee + gstAmount;
 
     return res.status(200).json({
       success: true,
@@ -726,8 +729,10 @@ export const getpaymentrelateddata = async (
         email: student.email,
         mobileNo: student.mobileNo,
         applicationId: student.applicationId,
-        applicationFee: settingsDoc?.applicationFee || 0,
-        paymentMethod: settingsDoc?.paymentMethod
+        amount: applicationFee,
+        gstAmount: gstAmount,
+        applicationFee: totalAmount || 0,
+        paymentMethod: settingsDoc?.paymentMethod,
       },
     });
   } catch (err) {
@@ -818,7 +823,8 @@ export const getReceiptData = async (
 
         // Payment
         applicationFee: payment.amount,
-        totalAmount: payment.amount,
+        gstAmount: payment?.gstAmount ? payment?.gstAmount : 0,
+        totalAmount: payment?.totalAmount ? payment?.totalAmount : payment.amount,
         paymentId: payment.paymentId,
         orderId: payment.orderId,
         transactionId: payment._id,

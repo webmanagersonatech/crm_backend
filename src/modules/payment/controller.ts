@@ -35,10 +35,12 @@ export const createRazorpayPayment = async (
       key_secret: settings.paymentCredentials.keySecret,
     });
 
-    const amount = settings.applicationFee;
+    const baseAmount = settings.applicationFee;
+    const gst = (baseAmount * 18) / 100;
+    const totalAmount = baseAmount + gst;
 
     const order = await razorpay.orders.create({
-      amount: amount * 100,
+      amount: totalAmount * 100,
       currency: "INR",
       receipt: `receipt_${applicationId}`,
     });
@@ -46,7 +48,9 @@ export const createRazorpayPayment = async (
     await Payment.create({
       studentId: student.studentId,
       applicationId,
-      amount,
+      amount: baseAmount,
+      gstAmount: gst,
+      totalAmount: totalAmount,
       instituteId: student.instituteId,
       orderId: order.id,
       status: "pending",
@@ -57,7 +61,7 @@ export const createRazorpayPayment = async (
       success: true,
       orderId: order.id,
       key: settings.paymentCredentials.keyId,
-      amount: order.amount,
+      amount: totalAmount * 100,
     });
   } catch (error) {
     return res.status(500).json({ message: "Razorpay creation failed" });
@@ -188,12 +192,14 @@ export const createInstamojoPayment = async (
     if (!settings)
       return res.status(400).json({ message: "Settings not configured" });
 
-    const amount = settings.applicationFee;
+    const baseAmount = settings.applicationFee;
+    const gst = (baseAmount * 18) / 100;
+    const totalAmount = baseAmount + gst;
 
     const response = await axios.post(
       "https://www.instamojo.com/api/1.1/payment-requests/",
       {
-        amount: amount.toString(),
+        amount: totalAmount.toString(),
         purpose: `Application Fee - ${applicationId}`,
         buyer_name: `${student.firstname} ${student.lastname}`,
         email: student.email,
@@ -216,7 +222,9 @@ export const createInstamojoPayment = async (
     await Payment.create({
       studentId: student.studentId,
       applicationId,
-      amount,
+      amount: baseAmount,
+      gstAmount: gst,
+      totalAmount: totalAmount,
       instituteId: student.instituteId,
       orderId: paymentRequest.id,
       status: "pending",
