@@ -11,6 +11,7 @@ import Settings from '../settings/model'
 import emailtemplates from '../email-templates/model';
 import fs from "fs";
 import csv from "csv-parser";
+import Institution from '../institutions/model'
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -353,14 +354,39 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 export const sendPasswordEmail = async (
   email: string,
   name: string,
+  instituteName: string,
+  instituteId: string,
   password: string
 ) => {
+  const portalLink = `https://hikabackend.sonastar.com/api/institutions/apply/${instituteId}`;
+
   const htmlContent = `
     <h3>Welcome ${name}</h3>
-    <p>Your student account has been created.</p>
+
+    <p>Your student account has been created for <b>${instituteName}</b>.</p>
+
     <p><strong>Email:</strong> ${email}</p>
     <p><strong>Password:</strong> ${password}</p>
+
     <p>Please change your password after login.</p>
+
+    <p>Click the button below to view your portal and login:</p>
+
+    <p style="margin-top:20px;">
+      <a href="${portalLink}" 
+         target="_blank"
+         style="
+           background-color:#16a34a;
+           color:#ffffff;
+           padding:12px 22px;
+           text-decoration:none;
+           border-radius:6px;
+           font-weight:600;
+           display:inline-block;
+         ">
+         Click Here to View Portal
+      </a>
+    </p>
   `;
 
   await emailApi.sendTransacEmail({
@@ -606,7 +632,15 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     const student = await Student.create(studentData);
 
 
-    await sendPasswordEmail(email, firstname, plainPassword);
+    const institution = await Institution.findOne({ instituteId });
+
+    await sendPasswordEmail(
+      email,
+      firstname,
+      institution?.name || "Our Institution",
+      instituteId,
+      plainPassword
+    );
 
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
