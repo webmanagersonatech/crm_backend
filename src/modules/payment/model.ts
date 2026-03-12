@@ -2,7 +2,10 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IPayment extends Document {
   studentId: string;
+  instituteId: string;
   applicationId: string; // you are using string APP ID
+  gstAmount?: number;     // GST amount (18%)
+  totalAmount?: number;   // final amount (fee + GST)
   amount: number;
   orderId: string;       // Razorpay Order ID
   paymentId?: string;    // Razorpay Payment ID
@@ -28,6 +31,16 @@ const PaymentSchema: Schema = new Schema(
     },
 
     amount: {
+      type: Number,
+      required: true,
+    },
+    gstAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    // Total fee (amount + GST)
+    totalAmount: {
       type: Number,
       required: true,
     },
