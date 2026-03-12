@@ -182,12 +182,7 @@ export const studentLogin = async (req: Request, res: Response) => {
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
-
-    res.clearCookie("instituteId", {
-      path: "/",
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-    });
+    
 
     res.cookie("token", token, {
       httpOnly: true,
