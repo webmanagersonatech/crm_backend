@@ -183,6 +183,9 @@ export const studentLogin = async (req: Request, res: Response) => {
       { expiresIn: "7d" }
     );
 
+    res.clearCookie("token", { path: "/" });
+    res.clearCookie("instituteId", { path: "/" });
+
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // only HTTPS in production
