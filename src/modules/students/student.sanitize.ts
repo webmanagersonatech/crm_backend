@@ -41,7 +41,10 @@ export const studentSchema = Joi.object({
       "string.empty": "Mobile number is required",
       "string.pattern.base": "Mobile number must be 10 digits",
     }),
-
+  recaptchaToken: Joi.string()
+    .trim()
+    .optional()
+    .allow(''),
   instituteId: Joi.string()
     .trim()
     .required()

@@ -14,6 +14,7 @@ import Payments from "../payment/model";
 import Institution from "../institutions/model";
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -99,6 +100,28 @@ export const createStudent = async (req: Request, res: Response) => {
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
     }
+    const { recaptchaToken, ...studentData } = value;
+
+    if (!recaptchaToken) {
+      return res.status(400).json({ message: "reCAPTCHA verification failed" });
+    }
+    const verificationResponse = await axios.post(
+      'https://www.google.com/recaptcha/api/siteverify',
+      null,
+      {
+        params: {
+          secret: process.env.RECAPTCHA_SECRET_KEY, // Add this to .env
+          response: recaptchaToken
+        }
+      }
+    );
+
+    const { success, score } = verificationResponse.data;
+
+    if (!success) {
+      return res.status(400).json({ message: "reCAPTCHA verification failed" });
+    }
+
 
     const { email, firstname, mobileNo, instituteId } = value;
 
@@ -182,7 +205,7 @@ export const studentLogin = async (req: Request, res: Response) => {
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
-    
+
 
     res.cookie("token", token, {
       httpOnly: true,

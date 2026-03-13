@@ -24,6 +24,42 @@ export const createInstitution = async (req: AuthRequest, res: Response) => {
 };
 
 
+export const getInstitutionNameByInstituteId = async (req: AuthRequest, res: Response) => {
+  try {
+    const instituteId = req.user?.instituteId;
+
+    if (!instituteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Institute ID not found in user"
+      });
+    }
+
+    const institution = await Institution.findOne({ instituteId }).select("name");
+
+    if (!institution) {
+      return res.status(404).json({
+        success: false,
+        message: "Institution not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        name: institution.name
+      }
+    });
+
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error"
+    });
+  }
+};
+
 export const listInstitutions = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;

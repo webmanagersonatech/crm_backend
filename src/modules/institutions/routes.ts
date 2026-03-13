@@ -9,8 +9,8 @@ import {
   getActiveData,
   getInstituteIdViaCookie,
   getActiveInstitutionsbystudent,
-  getenquiryInstituteIdViaCookie
-
+  getenquiryInstituteIdViaCookie,
+  getInstitutionNameByInstituteId
 } from './controller';
 import { protect } from '../../middlewares/auth';
 
@@ -20,6 +20,7 @@ router.get('/active-institutions', getActiveInstitutionsbystudent);
 router.get('/apply/:instituteId', getInstituteIdViaCookie)
 router.get('/enquiry/:instituteId', getenquiryInstituteIdViaCookie)
 router.get('/activedata', protect, getActiveData);
+router.get('/getname', protect, getInstitutionNameByInstituteId);
 router.get('/', protect, listInstitutions);
 router.post('/', protect, createInstitution);
 router.get('/:id', protect, getInstitution);
