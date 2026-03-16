@@ -93,74 +93,98 @@ const sendPasswordEmail = async (
 };
 
 // Create a new student
+// In your student controller (createStudent function)
 export const createStudent = async (req: Request, res: Response) => {
   try {
     const { error, value } = studentSchema.validate(req.body);
 
     if (error) {
-      return res.status(400).json({ message: error.details[0].message });
-    }
-    const { recaptchaToken, ...studentData } = value;
-
-    if (!recaptchaToken) {
-      return res.status(400).json({ message: "reCAPTCHA verification failed" });
-    }
-    const verificationResponse = await axios.post(
-      'https://www.google.com/recaptcha/api/siteverify',
-      null,
-      {
-        params: {
-          secret: process.env.RECAPTCHA_SECRET_KEY, // Add this to .env
-          response: recaptchaToken
-        }
-      }
-    );
-
-    const { success, score } = verificationResponse.data;
-
-    if (!success) {
-      return res.status(400).json({ message: "reCAPTCHA verification failed" });
+      return res.status(400).json({ 
+        success: false,
+        message: error.details[0].message 
+      });
     }
 
+    const { email, firstname, mobileNo, instituteId, captchaInput } = value;
 
-    const { email, firstname, mobileNo, instituteId } = value;
+    // 🔐 Verify captcha first
+    if (!captchaInput) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Captcha is required" 
+      });
+    }
 
+    if (!req.session.captcha) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Captcha expired. Please refresh." 
+      });
+    }
+
+    const isValidCaptcha = 
+      captchaInput.toLowerCase() === req.session.captcha.toLowerCase();
+
+    if (!isValidCaptcha) {
+      // Clear the invalid captcha
+      req.session.captcha = null;
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid captcha. Please try again." 
+      });
+    }
+
+    // Clear captcha after successful verification
+    req.session.captcha = null;
+
+    // Check existing student
     const existing = await Student.findOne({ instituteId, email });
     if (existing) {
-      return res.status(400).json({ message: "Student already exists" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Student with this email already exists in this institute" 
+      });
     }
+
     // Check if mobile number already exists
     const existingMobile = await Student.findOne({ instituteId, mobileNo });
     if (existingMobile) {
-      return res.status(400).json({ message: "Mobile number already exists" });
-    }
-    const existingglobal: any = await Student.findOne({ email }).populate("institute");
-
-    if (existing) {
-      return res.status(400).json({
-        message: `Student already exists in ${existingglobal.institute?.name}`,
+      return res.status(400).json({ 
+        success: false,
+        message: "Mobile number already exists in this institute" 
       });
     }
 
-    const existingmobileNo: any = await Student
-      .findOne({ mobileNo })
-      .populate("institute", "name");
+    // Check globally for email
+    const existingglobal:any = await Student.findOne({ email }).populate("institute", "name");
+    if (existingglobal) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}` 
+      });
+    }
 
+    // Check globally for mobile
+    const existingmobileNo:any = await Student.findOne({ mobileNo }).populate("institute", "name");
     if (existingmobileNo) {
-      return res.status(400).json({
-        message: `Mobile number already exists in ${existingmobileNo.institute?.name}`,
+      return res.status(400).json({ 
+        success: false,
+        message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}` 
       });
     }
-    const institution = await Institution.findOne({ instituteId });
 
+    const institution = await Institution.findOne({ instituteId });
     if (!institution) {
-      return res.status(404).json({ message: "Institution not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Institution not found" 
+      });
     }
 
-    // ✅ Generate plain password ONLY
+    // Generate plain password
     const plainPassword = generatePassword();
 
-    // ❌ DO NOT hash here
+    // Create student
     const student = await Student.create({
       ...value,
       password: plainPassword
@@ -179,12 +203,20 @@ export const createStudent = async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
-      message: "Student created successfully. Password sent to email.",
-      data: student,
+      message: "Registration successful! Password has been sent to your email.",
+      data: {
+        id: student._id,
+        email: student.email,
+        name: `${student.firstname} ${student.lastname}`
+      }
     });
+
   } catch (err) {
     console.error("Error creating student:", err);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ 
+      success: false,
+      message: "Internal server error. Please try again later." 
+    });
   }
 };
 
@@ -205,7 +237,7 @@ export const studentLogin = async (req: Request, res: Response) => {
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
-
+    
 
     res.cookie("token", token, {
       httpOnly: true,

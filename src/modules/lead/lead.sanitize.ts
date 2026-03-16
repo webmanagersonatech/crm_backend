@@ -5,7 +5,11 @@ export const createLeadSchema = Joi.object({
   program: Joi.string().required(),
   candidateName: Joi.string().required(),
   ugDegree: Joi.string().optional().allow(''),
-  phoneNumber: Joi.string().optional(),
+  phoneNumber: Joi.string().pattern(/^[6-9]\d{9}$/).required().messages({
+    'string.pattern.base': 'Phone number must be 10 digits and start with 6, 7, 8, or 9',
+    'any.required': 'Phone number is required',
+    'string.empty': 'Phone number is required'
+  }),
   email: Joi.string().email().optional().allow(''),
   dateOfBirth: Joi.date().optional(),
   country: Joi.string().optional(),
