@@ -99,9 +99,9 @@ export const createStudent = async (req: Request, res: Response) => {
     const { error, value } = studentSchema.validate(req.body);
 
     if (error) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: error.details[0].message 
+        message: error.details[0].message
       });
     }
 
@@ -109,28 +109,28 @@ export const createStudent = async (req: Request, res: Response) => {
 
     // 🔐 Verify captcha first
     if (!captchaInput) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Captcha is required" 
+        message: "Captcha is required"
       });
     }
 
     if (!req.session.captcha) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Captcha expired. Please refresh." 
+        message: "Captcha expired. Please refresh."
       });
     }
 
-    const isValidCaptcha = 
+    const isValidCaptcha =
       captchaInput.toLowerCase() === req.session.captcha.toLowerCase();
 
     if (!isValidCaptcha) {
       // Clear the invalid captcha
       req.session.captcha = null;
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Invalid captcha. Please try again." 
+        message: "Invalid captcha. Please try again."
       });
     }
 
@@ -140,44 +140,44 @@ export const createStudent = async (req: Request, res: Response) => {
     // Check existing student
     const existing = await Student.findOne({ instituteId, email });
     if (existing) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Student with this email already exists in this institute" 
+        message: "Student with this email already exists in this institute"
       });
     }
 
     // Check if mobile number already exists
     const existingMobile = await Student.findOne({ instituteId, mobileNo });
     if (existingMobile) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Mobile number already exists in this institute" 
+        message: "Mobile number already exists in this institute"
       });
     }
 
     // Check globally for email
-    const existingglobal:any = await Student.findOne({ email }).populate("institute", "name");
+    const existingglobal: any = await Student.findOne({ email }).populate("institute", "name");
     if (existingglobal) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}` 
+        message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}`
       });
     }
 
     // Check globally for mobile
-    const existingmobileNo:any = await Student.findOne({ mobileNo }).populate("institute", "name");
+    const existingmobileNo: any = await Student.findOne({ mobileNo }).populate("institute", "name");
     if (existingmobileNo) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}` 
+        message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}`
       });
     }
 
     const institution = await Institution.findOne({ instituteId });
     if (!institution) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Institution not found" 
+        message: "Institution not found"
       });
     }
 
@@ -213,9 +213,9 @@ export const createStudent = async (req: Request, res: Response) => {
 
   } catch (err) {
     console.error("Error creating student:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Internal server error. Please try again later." 
+      message: "Internal server error. Please try again later."
     });
   }
 };
@@ -237,7 +237,7 @@ export const studentLogin = async (req: Request, res: Response) => {
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
-    
+
 
     res.cookie("token", token, {
       httpOnly: true,
@@ -762,7 +762,7 @@ export const getpaymentrelateddata = async (
 
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
-    }).select("applicationFee paymentMethod");
+    }).select("applicationFee gstPercentage paymentMethod");
 
 
     const applicationFee = settingsDoc?.applicationFee ?? 0;
@@ -774,7 +774,7 @@ export const getpaymentrelateddata = async (
         message: "Application payment is not required.",
       });
     }
-    const gstPercentage = 18;
+    const gstPercentage = settingsDoc?.gstPercentage ?? 0;
     const gstAmount = (applicationFee * gstPercentage) / 100;
     const totalAmount = applicationFee + gstAmount;
 
@@ -789,6 +789,7 @@ export const getpaymentrelateddata = async (
         gstAmount: gstAmount,
         applicationFee: totalAmount || 0,
         paymentMethod: settingsDoc?.paymentMethod,
+        gstPercentage
       },
     });
   } catch (err) {

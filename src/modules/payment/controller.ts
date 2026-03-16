@@ -36,7 +36,8 @@ export const createRazorpayPayment = async (
     });
 
     const baseAmount = settings.applicationFee;
-    const gst = (baseAmount * 18) / 100;
+    const gstPercentage = settings?.gstPercentage || 0;
+    const gst = (baseAmount * gstPercentage) / 100;
     const totalAmount = baseAmount + gst;
 
     const order = await razorpay.orders.create({
@@ -192,8 +193,9 @@ export const createInstamojoPayment = async (
     if (!settings)
       return res.status(400).json({ message: "Settings not configured" });
 
-    const baseAmount = settings.applicationFee;
-    const gst = (baseAmount * 18) / 100;
+    const baseAmount = settings?.applicationFee;
+    const gstPercentage = settings?.gstPercentage || 0;
+    const gst = (baseAmount * gstPercentage) / 100;
     const totalAmount = baseAmount + gst;
 
     const response = await axios.post(

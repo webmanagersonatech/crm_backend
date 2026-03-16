@@ -17,6 +17,16 @@ export const settingsSchema = Joi.object({
       'any.only': 'Payment method must be razorpay or instamojo',
       'any.required': 'Payment method is required',
     }),
+  gstPercentage: Joi.number()
+    .min(0)
+    .max(100)
+    .required()
+    .messages({
+      'number.base': 'GST must be a number',
+      'number.min': 'GST cannot be negative',
+      'number.max': 'GST cannot exceed 100%',
+      'any.required': 'GST percentage is required',
+    }),
 
   // ✅ Payment Credentials
   paymentCredentials: Joi.when('paymentMethod', {

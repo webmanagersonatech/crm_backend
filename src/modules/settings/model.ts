@@ -16,6 +16,7 @@ export interface ISettings extends Document {
   authToken?: string;
   contactEmail?: string;
   contactNumber?: string;
+  gstPercentage?: number;
   address?: string;
   applicationFee: number;
   academicYear: string;
@@ -44,6 +45,12 @@ const SettingsSchema = new Schema<ISettings>(
       type: Number,
       required: true,
       min: 0,
+    },
+    gstPercentage: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100,
     },
 
     applicantAge: {
