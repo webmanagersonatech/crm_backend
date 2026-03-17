@@ -217,15 +217,21 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       paidApplications,
       unpaidApplications,
       closedLeads,
-      notInterestedLeads
+      notInterestedLeads,
+      completeApplications,     // ✅ NEW
+      incompleteApplications
     ] = await Promise.all([
       Institution.countDocuments(),
       Lead.countDocuments(leadFilter),
       Application.countDocuments(appFilter),
       Application.countDocuments({ ...appFilter, paymentStatus: "Paid" }),
       Application.countDocuments({ ...appFilter, paymentStatus: "Unpaid" }),
+      
       Lead.countDocuments({ ...leadFilter, status: "Closed" }),
-      Lead.countDocuments({ ...leadFilter, status: "Not Interested" })
+      Lead.countDocuments({ ...leadFilter, status: "Not Interested" }),
+
+      Application.countDocuments({ ...appFilter, formStatus: "Complete" }),
+      Application.countDocuments({ ...appFilter, formStatus: "Incomplete" })
     ]);
 
     res.status(200).json({
@@ -238,7 +244,9 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
         paidApplications,
         unpaidApplications,
         closedLeads,
-        notInterestedLeads
+        notInterestedLeads,
+        completeApplications,
+        incompleteApplications
       }
     });
 
