@@ -4,8 +4,6 @@ import mongoosePaginate from "mongoose-paginate-v2";
 import crypto from "crypto";
 
 
-
-
 export interface IStudent extends Document {
   studentId: string;
   firstname: string;
@@ -13,6 +11,7 @@ export interface IStudent extends Document {
   email: string;
   country?: string;
   applicationId?: string;
+  username: string;
   password: string;
   mobileNo: string;
   instituteId: string;
@@ -47,9 +46,17 @@ const StudentSchema = new Schema<IStudent>(
     firstname: { type: String, required: true },
     lastname: { type: String, },
     applicationId: { type: String },
-    email: { type: String, required: true, unique: true },
+    email: { type: String },
+    username: {
+      type: String,
+      required: true,
+      unique: true, // ✅ only this is unique
+    },
     password: { type: String, required: true },
-    mobileNo: { type: String, required: true, unique: true },
+    mobileNo: {
+      type: String,
+      required: true, // ❌ no unique here
+    },
     instituteId: { type: String, required: true },
     academicYear: { type: String },   // ✅ added
     interactions: { type: String },
@@ -106,6 +113,8 @@ StudentSchema.virtual("application", {
 
 
 StudentSchema.plugin(mongoosePaginate);
+StudentSchema.index({ mobileNo: 1, instituteId: 1 }, { unique: true });
+StudentSchema.index({ username: 1 }, { unique: true });
 
 // Auto-generate studentId and hash password
 StudentSchema.pre("save", async function (next) {
@@ -132,7 +141,6 @@ StudentSchema.pre("save", async function (next) {
 
   next();
 });
-
 
 // Compare password method
 StudentSchema.methods.comparePassword = async function (candidate: string) {

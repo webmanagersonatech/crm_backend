@@ -15,6 +15,7 @@ import Institution from "../institutions/model";
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import crypto from "crypto";
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -28,10 +29,25 @@ const generatePassword = (length = 8) => {
   return Math.random().toString(36).slice(-length);
 };
 
+const getInstituteShortName = (name: string) => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-zA-Z ]/g, "")
+    .split(" ")
+    .map(word => word[0])
+    .join("");
+};
+
+// unique suffix (fast + safe)
+const generateUniqueSuffix = (length = 4) => {
+  return crypto.randomBytes(3).toString("hex").slice(0, length);
+};
+
 // Send password email
 const sendPasswordEmail = async (
   email: string,
   firstname: string,
+  username: string,
   password: string,
   instituteName: string,
   supportEmail: string,
@@ -52,8 +68,8 @@ const sendPasswordEmail = async (
       <p>Your login credentials are given below:</p>
 
       <p>
-      <b>Email:</b> ${email}<br/>
-      <b>Password:</b> ${password}
+    <b>Username:</b> ${username}<br/>
+    <b>Password:</b> ${password}
       </p>
 
       <p>You may log in using the following link:</p>
@@ -155,23 +171,23 @@ export const createStudent = async (req: Request, res: Response) => {
       });
     }
 
-    // Check globally for email
-    const existingglobal: any = await Student.findOne({ email }).populate("institute", "name");
-    if (existingglobal) {
-      return res.status(400).json({
-        success: false,
-        message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}`
-      });
-    }
+    // // Check globally for email
+    // const existingglobal: any = await Student.findOne({ email }).populate("institute", "name");
+    // if (existingglobal) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}`
+    //   });
+    // }
 
-    // Check globally for mobile
-    const existingmobileNo: any = await Student.findOne({ mobileNo }).populate("institute", "name");
-    if (existingmobileNo) {
-      return res.status(400).json({
-        success: false,
-        message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}`
-      });
-    }
+    // // Check globally for mobile
+    // const existingmobileNo: any = await Student.findOne({ mobileNo }).populate("institute", "name");
+    // if (existingmobileNo) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}`
+    //   });
+    // }
 
     const institution = await Institution.findOne({ instituteId });
     if (!institution) {
@@ -183,10 +199,14 @@ export const createStudent = async (req: Request, res: Response) => {
 
     // Generate plain password
     const plainPassword = generatePassword();
+    const shortName = getInstituteShortName(institution.name);
+    const suffix = generateUniqueSuffix();
+    const username = `${shortName}_${firstname}_${suffix}`.toLowerCase();
 
     // Create student
     const student = await Student.create({
       ...value,
+      username,
       password: plainPassword
     });
 
@@ -194,6 +214,7 @@ export const createStudent = async (req: Request, res: Response) => {
     await sendPasswordEmail(
       email,
       firstname,
+      username,
       plainPassword,
       institution.name,
       institution.email || "",
@@ -203,7 +224,7 @@ export const createStudent = async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Password has been sent to your email.",
+      message: "Registration successful! username and  Password has been sent to your email.",
       data: {
         id: student._id,
         email: student.email,
@@ -222,10 +243,10 @@ export const createStudent = async (req: Request, res: Response) => {
 
 export const studentLogin = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ message: "username and password are required" });
 
-    const student = await Student.findOne({ email });
+    const student = await Student.findOne({ username });
     if (!student) return res.status(404).json({ message: "Student not found" });
     if (student.status !== "active") return res.status(403).json({ message: "Student is inactive" });
 
@@ -233,24 +254,25 @@ export const studentLogin = async (req: Request, res: Response) => {
     if (!isMatch) return res.status(401).json({ message: "Invalid password" });
 
     const token = jwt.sign(
-      { id: student._id, studentId: student.studentId, instituteId: student.instituteId, email: student.email },
+      { id: student._id, studentId: student.studentId, instituteId: student.instituteId, username: student.username, },
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
-
+    const isProduction = process.env.NODE_ENV === "production";
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // only HTTPS in production
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
 
+    // 🍪 Set INSTITUTE cookie (fresh from student)
     res.cookie("instituteId", student.instituteId, {
-      httpOnly: false, // must be false if frontend needs access
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -263,8 +285,7 @@ export const studentLogin = async (req: Request, res: Response) => {
         studentId: student.studentId,
         firstname: student.firstname,
         lastname: student.lastname,
-        email: student.email,
-
+        username: student.username,
       },
     });
   } catch (err) {
@@ -272,6 +293,7 @@ export const studentLogin = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 export const studentLogout = async (req: Request, res: Response) => {
   try {
     res.cookie("token", "", {

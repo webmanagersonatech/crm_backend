@@ -63,7 +63,50 @@ const buildSearchTextFromSections = (
   return tokens.join(" ");
 };
 
+const getInstituteShortName = (name: string) => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-zA-Z ]/g, "")
+    .split(" ")
+    .map(word => word[0])
+    .join("");
+};
 
+// unique suffix (fast + safe)
+const generateUniqueSuffix = (length = 4) => {
+  return crypto.randomBytes(3).toString("hex").slice(0, length);
+};
+const generateUniqueUsername = async (
+  instituteName: string,
+  firstname: string
+): Promise<string> => {
+  const shortName = getInstituteShortName(instituteName || "inst");
+
+  let username = "";
+  let isUnique = false;
+  let attempts = 0;
+
+  while (!isUnique && attempts < 5) {
+    const suffix = generateUniqueSuffix();
+    username = `${shortName}_${firstname}_${suffix}`
+      .toLowerCase()
+      .replace(/\s+/g, ""); // remove spaces
+
+    const existing = await Student.findOne({ username });
+
+    if (!existing) {
+      isUnique = true;
+    }
+
+    attempts++;
+  }
+
+  if (!isUnique) {
+    throw new Error("Failed to generate unique username. Try again.");
+  }
+
+  return username;
+};
 
 const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number", "email"];
 
@@ -353,6 +396,7 @@ export const sendTemplateMails = async (req: Request, res: Response) => {
 
 export const sendPasswordEmail = async (
   email: string,
+  username: string,
   name: string,
   instituteName: string,
   instituteId: string,
@@ -365,8 +409,8 @@ export const sendPasswordEmail = async (
 
     <p>Your student account has been created for <b>${instituteName}</b>.</p>
 
-    <p><strong>Email:</strong> ${email}</p>
-    <p><strong>Password:</strong> ${password}</p>
+ <p><strong>Username:</strong> ${username}</p>
+<p><strong>Password:</strong> ${password}</p>
 
     <p>Please change your password after login.</p>
 
@@ -606,7 +650,15 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     }
     const plainPassword = generatePassword();
 
+    const institution = await Institution.findOne({ instituteId });
+  
+    const username = await generateUniqueUsername(
+      institution?.name || "inst",
+      firstname
+    );
+
     const studentData: any = {
+      username,
       firstname,
       lastname: flattenedPersonalFields["Last Name"] || "",
       email,
@@ -632,10 +684,11 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     const student = await Student.create(studentData);
 
 
-    const institution = await Institution.findOne({ instituteId });
+
 
     await sendPasswordEmail(
       email,
+      username,
       firstname,
       institution?.name || "Our Institution",
       instituteId,

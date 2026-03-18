@@ -183,6 +183,69 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
   }
 };
 
+
+export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
+  try {
+    const { instituteId } = req.params;
+
+    // 🔍 Validate input
+    if (!instituteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Institute ID is required",
+      });
+    }
+
+    // 🔍 Find institute (NO status filter here)
+    const institution = await Institution.findOne({ instituteId });
+
+    // ❌ Not found
+    if (!institution) {
+      return res.status(404).json({
+        success: false,
+        message: "Institute not found",
+      });
+    }
+
+    // ❌ Inactive
+    if (institution.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        message: "Institute is inactive. Please contact admin",
+      });
+    }
+
+    // 🌍 Environment check
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // 🍪 Set cookie
+    res.cookie("instituteId", instituteId, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    // ✅ Success
+    return res.status(200).json({
+      success: true,
+      message: "Institute cookie set successfully",
+      data: {
+        instituteId,
+      },
+    });
+
+  } catch (error: any) {
+    console.error("Error in getInstituteIdViaCookie:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 // export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response) => {
 //   try {
 //     const { instituteId } = req.params;
