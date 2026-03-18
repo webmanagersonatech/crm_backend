@@ -273,10 +273,10 @@ export const studentLogin = async (req: Request, res: Response) => {
       httpOnly: false,
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
+      domain: ".sonastar.com",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
-
 
     res.status(200).json({
       success: true,
