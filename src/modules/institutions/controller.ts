@@ -219,10 +219,13 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
     const isProduction = process.env.NODE_ENV === "production";
 
     // 🍪 Set cookie
+
+
     res.cookie("instituteId", instituteId, {
       httpOnly: false,
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
+      domain: ".sonastar.com", // 🔥 ADD THIS LINE
       path: "/",
       maxAge: 24 * 60 * 60 * 1000,
     });
