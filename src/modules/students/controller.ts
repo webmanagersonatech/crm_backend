@@ -123,37 +123,23 @@ export const createStudent = async (req: Request, res: Response) => {
 
     const { email, firstname, mobileNo, instituteId, captchaInput } = value;
 
-    // 🔐 Verify captcha first
+    // 🔐 CAPTCHA VALIDATION
     if (!captchaInput) {
-      return res.status(400).json({
-        success: false,
-        message: "Captcha is required"
-      });
+      return res.status(400).json({ success: false, message: "Captcha is required" });
     }
 
     if (!req.session.captcha) {
-      return res.status(400).json({
-        success: false,
-        message: "Captcha expired. Please refresh."
-      });
+      return res.status(400).json({ success: false, message: "Captcha expired. Please refresh." });
     }
 
-    const isValidCaptcha =
-      captchaInput.toLowerCase() === req.session.captcha.toLowerCase();
-
-    if (!isValidCaptcha) {
-      // Clear the invalid captcha
+    if (captchaInput.toLowerCase() !== req.session.captcha.toLowerCase()) {
       req.session.captcha = null;
-      return res.status(400).json({
-        success: false,
-        message: "Invalid captcha. Please try again."
-      });
+      return res.status(400).json({ success: false, message: "Invalid captcha. Please try again." });
     }
 
-    // Clear captcha after successful verification
     req.session.captcha = null;
 
-    // Check existing student
+    // 🔍 CHECK EXISTING EMAIL & MOBILE
     const existing = await Student.findOne({ instituteId, email });
     if (existing) {
       return res.status(400).json({
@@ -162,7 +148,6 @@ export const createStudent = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if mobile number already exists
     const existingMobile = await Student.findOne({ instituteId, mobileNo });
     if (existingMobile) {
       return res.status(400).json({
@@ -171,24 +156,7 @@ export const createStudent = async (req: Request, res: Response) => {
       });
     }
 
-    // // Check globally for email
-    // const existingglobal: any = await Student.findOne({ email }).populate("institute", "name");
-    // if (existingglobal) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: `Email already registered with ${existingglobal.institute?.name || 'another institute'}`
-    //   });
-    // }
-
-    // // Check globally for mobile
-    // const existingmobileNo: any = await Student.findOne({ mobileNo }).populate("institute", "name");
-    // if (existingmobileNo) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: `Mobile number already registered with ${existingmobileNo.institute?.name || 'another institute'}`
-    //   });
-    // }
-
+    // 🏫 GET INSTITUTION
     const institution = await Institution.findOne({ instituteId });
     if (!institution) {
       return res.status(404).json({
@@ -197,20 +165,43 @@ export const createStudent = async (req: Request, res: Response) => {
       });
     }
 
-    // Generate plain password
+    // 🔐 GENERATE PASSWORD
     const plainPassword = generatePassword();
+
+    // 🧠 GENERATE USERNAME
     const shortName = getInstituteShortName(institution.name);
-    const suffix = generateUniqueSuffix();
-    const username = `${shortName}_${firstname}_${suffix}`.toLowerCase();
 
-    // Create student
-    const student = await Student.create({
-      ...value,
-      username,
-      password: plainPassword
-    });
+    let username = "";
+    let exists = true;
 
-    // Send password to email
+    // 🔁 LOOP UNTIL UNIQUE USERNAME
+    while (exists) {
+      const suffix = generateUniqueSuffix();
+      username = `${shortName}_${firstname}_${suffix}`.toLowerCase();
+      const userCheck = await Student.findOne({ username });
+      exists = !!userCheck;
+    }
+
+    // 🚀 CREATE STUDENT (WITH RETRY SAFETY)
+    let student;
+    try {
+      student = await Student.create({
+        ...value,
+        username,
+        password: plainPassword
+      });
+    } catch (err: any) {
+      // 💥 HANDLE DUPLICATE (RACE CONDITION)
+      if (err.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: "Username already exists. Please try again."
+        });
+      }
+      throw err;
+    }
+
+    // 📧 SEND EMAIL
     await sendPasswordEmail(
       email,
       firstname,
@@ -222,9 +213,10 @@ export const createStudent = async (req: Request, res: Response) => {
       instituteId
     );
 
-    res.status(201).json({
+    // ✅ SUCCESS RESPONSE
+    return res.status(201).json({
       success: true,
-      message: "Registration successful! username and  Password has been sent to your email.",
+      message: "Registration successful! Username and Password sent to email.",
       data: {
         id: student._id,
         email: student.email,
@@ -234,7 +226,8 @@ export const createStudent = async (req: Request, res: Response) => {
 
   } catch (err) {
     console.error("Error creating student:", err);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Internal server error. Please try again later."
     });
