@@ -50,7 +50,7 @@ const StudentSchema = new Schema<IStudent>(
     username: {
       type: String,
       required: true,
-      unique: true, // ✅ only this is unique
+    
     },
     password: { type: String, required: true },
     mobileNo: {
