@@ -6,10 +6,14 @@ export const generateCaptcha = (req: Request, res: Response) => {
   try {
     const captcha = svgCaptcha.create({
       size: 6,
-      noise: 4,
+      noise: 0, // Remove all noise
       color: true,
-      background: "#f2f2f2",
-      charPreset: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+      background: "#ffffff", // White background for better contrast
+      fontSize: 56, // Larger font size for better visibility
+      width: 280,
+      height: 100,
+      charPreset: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+      ignoreChars: "0O1I", // Remove confusing characters
     });
 
     // Store captcha text in session
