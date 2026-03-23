@@ -45,10 +45,12 @@ const sendLeadConfirmationEmail = async (
 
   await emailApi.sendTransacEmail(emailData);
 };
+
 const generateLeadId = async (instituteId: string) => {
   const random = Math.random().toString(16).substring(2, 8).toUpperCase();
   return `${instituteId}-LE-${random}`;
 };
+
 const generateUniqueLeadId = async (instituteId: string) => {
   let leadId;
   let exists = true;
@@ -182,7 +184,7 @@ export const createThirdPartyLead = async (
 
     // 🔥 Force system controlled fields
     status: "New",
-    leadSource: "offline",
+    leadSource: "online",
     createdBy,
     instituteId,
     communication: "Phone",

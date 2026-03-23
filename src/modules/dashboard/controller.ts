@@ -205,6 +205,37 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
         },
       };
     }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const todayLeadFilter = {
+      ...leadFilter,
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    };
+
+    const todayAppFilter = {
+      ...appFilter,
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    };
+
+    const todayFollowUpLeadFilter = {
+      ...leadBaseFilter,
+      status: "Followup",
+      followups: {
+        $elemMatch: {
+          status: "Followup",
+          followUpDate: {
+            $gte: todayStart,
+            $lte: todayEnd,
+          },
+        },
+      },
+    };
+
     // If only one of startDate or endDate is provided, or neither → no followUpDate filter
 
     const followUpLeads = await Lead.countDocuments(followUpLeadFilter);
@@ -219,19 +250,25 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       closedLeads,
       notInterestedLeads,
       completeApplications,     // ✅ NEW
-      incompleteApplications
+      incompleteApplications,
+      todayLeads,
+      todayApplications,
+      todayFollowUpLeads
     ] = await Promise.all([
       Institution.countDocuments(),
       Lead.countDocuments(leadFilter),
       Application.countDocuments(appFilter),
       Application.countDocuments({ ...appFilter, paymentStatus: "Paid" }),
       Application.countDocuments({ ...appFilter, paymentStatus: "Unpaid" }),
-      
+
       Lead.countDocuments({ ...leadFilter, status: "Closed" }),
       Lead.countDocuments({ ...leadFilter, status: "Not Interested" }),
 
       Application.countDocuments({ ...appFilter, formStatus: "Complete" }),
-      Application.countDocuments({ ...appFilter, formStatus: "Incomplete" })
+      Application.countDocuments({ ...appFilter, formStatus: "Incomplete" }),
+      Lead.countDocuments(todayLeadFilter),
+      Application.countDocuments(todayAppFilter),
+      Lead.countDocuments(todayFollowUpLeadFilter),
     ]);
 
     res.status(200).json({
@@ -246,7 +283,10 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
         closedLeads,
         notInterestedLeads,
         completeApplications,
-        incompleteApplications
+        incompleteApplications,
+        todayLeads,
+        todayApplications,
+        todayFollowUpLeads,
       }
     });
 
@@ -304,6 +344,10 @@ export const getNewAndFollowupLeads = async (req: AuthRequest, res: Response) =>
     const leads = await Lead.paginate(filter, {
       page: Number(page),
       limit: Number(limit),
+      populate: [
+        { path: "creator", select: "firstname lastname instituteId role" },
+        { path: "institute", select: "name" },
+      ],
       sort: { createdAt: -1 }
     });
 
