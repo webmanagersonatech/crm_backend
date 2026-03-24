@@ -17,7 +17,8 @@ import {
     uploadStudentImageByAdmin,
     getpaymentrelateddata,
     getReceiptData,
-    studentLogout
+    studentLogout,
+    generateUsernamesForInstitute
 } from "./controller";
 
 const router = express.Router();
@@ -39,7 +40,10 @@ router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
 router.get("/", protect, listStudents);
 router.get("/:id", getStudent);
 router.get("/student/me", studentProtect, getLoggedInStudent);
-
+router.post(
+    "/generate-usernames/:instituteId",
+    generateUsernamesForInstitute
+);
 router.get("/studentindiual/:id", studentProtect, getStudent);
 router.put("/:id", protect, updateStudentCleanupData);
 router.put("/studentindiual/:id", studentProtect, updateStudent);

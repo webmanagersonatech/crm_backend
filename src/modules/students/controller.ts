@@ -250,6 +250,91 @@ export const createStudent = async (req: Request, res: Response) => {
   }
 };
 
+export const generateUsernamesForInstitute = async (req: Request, res: Response) => {
+  try {
+    const { instituteId } = req.params;
+
+    if (!instituteId) {
+      return res.status(400).json({ message: "InstituteId is required" });
+    }
+
+    // 🏫 Get institute
+    const institution = await Institution.findOne({ instituteId });
+    if (!institution) {
+      return res.status(404).json({ message: "Institution not found" });
+    }
+
+    // 👇 Find students WITHOUT username
+    const students = await Student.find({
+      instituteId,
+      $or: [
+        { username: { $exists: false } },
+        { username: "" }
+      ]
+    });
+
+    let updatedCount = 0;
+
+    for (const student of students) {
+      let username = "";
+      let exists = true;
+
+      // 🔁 Ensure unique username
+      while (exists) {
+        username = generateUsername(institution.name, student.firstname);
+        const userCheck = await Student.findOne({ username });
+        exists = !!userCheck;
+      }
+
+      // 🔐 Generate password
+      const plainPassword = generatePassword();
+
+      // ✅ Using genSalt + hash (your method)
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+      // 🚀 Update (NO save)
+      await Student.findByIdAndUpdate(
+        student._id,
+        {
+          $set: {
+            username,
+            password: hashedPassword
+          }
+        },
+        { new: true }
+      );
+
+      // 📧 Send email
+      try {
+        await sendPasswordEmail(
+          student.email,
+          student.firstname,
+          username,
+          plainPassword,
+          institution.name,
+          institution.email || "",
+          institution.phoneNo || "",
+          instituteId
+        );
+      } catch (err: any) {
+        console.error(`Email failed for ${student.email}`, err.message);
+      }
+
+      updatedCount++;
+    }
+
+    return res.json({
+      success: true,
+      message: `${updatedCount} students updated and emails sent`
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const studentLogin = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
