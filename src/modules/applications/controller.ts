@@ -63,34 +63,39 @@ const buildSearchTextFromSections = (
   return tokens.join(" ");
 };
 
-const getInstituteShortName = (name: string) => {
-  return name
-    .toLowerCase()
-    .replace(/[^a-zA-Z ]/g, "")
-    .split(" ")
-    .map(word => word[0])
-    .join("");
+const cleanText = (text: string) => {
+  return text.replace(/[^a-zA-Z ]/g, "");
 };
 
-// unique suffix (fast + safe)
-const generateUniqueSuffix = (length = 4) => {
-  return crypto.randomBytes(3).toString("hex").slice(0, length);
+// get first letter of each word (INSTITUTE)
+const getInstituteShortName = (name: string) => {
+  return cleanText(name)
+    .split(" ")
+    .map(word => word[0])
+    .join("")
+    .toUpperCase();
 };
+
+// crypto suffix (uppercase)
+const generateUniqueSuffix = (length = 4) => {
+  return crypto.randomBytes(2).toString("hex").toUpperCase().slice(0, length);
+};
+
 const generateUniqueUsername = async (
   instituteName: string,
   firstname: string
 ): Promise<string> => {
-  const shortName = getInstituteShortName(instituteName || "inst");
+  const inst = getInstituteShortName(instituteName || "INST").slice(0, 4); // 4 chars
+  const name = cleanText(firstname).slice(0, 4).toUpperCase(); // 4 chars
 
   let username = "";
   let isUnique = false;
   let attempts = 0;
 
   while (!isUnique && attempts < 5) {
-    const suffix = generateUniqueSuffix();
-    username = `${shortName}_${firstname}_${suffix}`
-      .toLowerCase()
-      .replace(/\s+/g, ""); // remove spaces
+    const suffix = generateUniqueSuffix(); // 4 chars
+
+    username = `${inst}${name}${suffix}`.slice(0, 12); // ✅ EXACT 12 chars
 
     const existing = await Student.findOne({ username });
 
@@ -402,7 +407,7 @@ export const sendPasswordEmail = async (
   instituteId: string,
   password: string
 ) => {
-  const portalLink = `https://hikabackend.sonastar.com/api/institutions/apply/${instituteId}`;
+  const portalLink = `https://hikaapp.sonastar.com/${instituteId}`;
 
   const htmlContent = `
     <h3>Welcome ${name}</h3>
@@ -651,7 +656,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     const plainPassword = generatePassword();
 
     const institution = await Institution.findOne({ instituteId });
-  
+
     const username = await generateUniqueUsername(
       institution?.name || "inst",
       firstname

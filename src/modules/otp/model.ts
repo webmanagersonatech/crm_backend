@@ -6,6 +6,7 @@ export interface IOtp extends Document {
   createdAt: Date;
   expiresAt: Date;
   verified?: boolean;
+  instituteId?: string;
 }
 
 const OtpSchema = new Schema<IOtp>(
@@ -14,10 +15,16 @@ const OtpSchema = new Schema<IOtp>(
       type: String,
       required: true,
       index: true,
+
     },
     otp: {
       type: String,
       required: true,
+    },
+    instituteId: {
+      type: String,
+      required: true,
+      index: true,
     },
     verified: {
       type: Boolean,

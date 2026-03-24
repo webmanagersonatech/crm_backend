@@ -16,6 +16,7 @@ import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
 import crypto from "crypto";
+import Otp from "../otp/model";
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -29,18 +30,30 @@ const generatePassword = (length = 8) => {
   return Math.random().toString(36).slice(-length);
 };
 
-const getInstituteShortName = (name: string) => {
-  return name
-    .toLowerCase()
-    .replace(/[^a-zA-Z ]/g, "")
-    .split(" ")
-    .map(word => word[0])
-    .join("");
+const cleanText = (text: string) => {
+  return text.replace(/[^a-zA-Z ]/g, "");
 };
 
-// unique suffix (fast + safe)
-const generateUniqueSuffix = (length = 4) => {
-  return crypto.randomBytes(3).toString("hex").slice(0, length);
+// get first letter of each word (INSTITUTE)
+const getInstituteShort = (name: string) => {
+  return cleanText(name)
+    .split(" ")
+    .map(word => word[0])
+    .join("")
+    .slice(0, 4) // limit to 4 chars
+    .toUpperCase();
+};
+
+const generateUsername = (
+  instituteName: string,
+  firstName: string
+) => {
+  const inst = getInstituteShort(instituteName); // e.g. SMCO
+  const name = cleanText(firstName).slice(0, 4).toUpperCase(); // e.g. VINO
+
+  const random = crypto.randomBytes(2).toString("hex").toUpperCase(); // e.g. A3F9
+
+  return `${inst}${name}${random}`.slice(0, 12); // EXACT 12 chars
 };
 
 // Send password email
@@ -75,7 +88,7 @@ const sendPasswordEmail = async (
       <p>You may log in using the following link:</p>
 
       <p>
-      <a href="https://hikabackend.sonastar.com/api/institutions/apply/${instituteId}" 
+      <a href="https://hikaapp.sonastar.com/${instituteId}" 
       style="background:#2563eb;color:white;padding:10px 16px;text-decoration:none;border-radius:6px">
       Application Login
       </a>
@@ -168,16 +181,15 @@ export const createStudent = async (req: Request, res: Response) => {
     // 🔐 GENERATE PASSWORD
     const plainPassword = generatePassword();
 
-    // 🧠 GENERATE USERNAME
-    const shortName = getInstituteShortName(institution.name);
 
     let username = "";
     let exists = true;
 
     // 🔁 LOOP UNTIL UNIQUE USERNAME
+
     while (exists) {
-      const suffix = generateUniqueSuffix();
-      username = `${shortName}_${firstname}_${suffix}`.toLowerCase();
+      username = generateUsername(institution.name, firstname);
+
       const userCheck = await Student.findOne({ username });
       exists = !!userCheck;
     }
@@ -202,16 +214,20 @@ export const createStudent = async (req: Request, res: Response) => {
     }
 
     // 📧 SEND EMAIL
-    await sendPasswordEmail(
-      email,
-      firstname,
-      username,
-      plainPassword,
-      institution.name,
-      institution.email || "",
-      institution.phoneNo || "",
-      instituteId
-    );
+    try {
+      await sendPasswordEmail(
+        email,
+        firstname,
+        username,
+        plainPassword,
+        institution.name,
+        institution.email || "",
+        institution.phoneNo || "",
+        instituteId
+      );
+    } catch (err: any) {
+      console.error("Email failed:", err.message);
+    }
 
     // ✅ SUCCESS RESPONSE
     return res.status(201).json({
@@ -658,52 +674,86 @@ export const changePasswordwithotpverfiedstudent = async (req: any, res: Respons
       email: Joi.string().email().required(),
       newPassword: Joi.string().required(),
       confirmPassword: Joi.string().required(),
+      instituteId: Joi.string().required(), // 🔥 add this
     });
 
     const { error, value } = schema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
 
-    const { email, newPassword, confirmPassword } = value;
+    const { email, newPassword, confirmPassword, instituteId } = value;
+
+    // ----------------- Check OTP Verified -----------------
+    const otpDoc = await Otp.findOne({
+      email,
+      instituteId,
+      verified: true,
+    });
+
+    if (!otpDoc) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP not verified or expired",
+      });
+    }
 
     // ----------------- Find User -----------------
-    const user = await Student.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    const user = await Student.findOne({ email, instituteId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
     // ----------------- Decrypt Passwords -----------------
-    let decryptedNewPassword = CryptoJS.AES.decrypt(newPassword, SECRET_KEY).toString(CryptoJS.enc.Utf8);
-    let decryptedConfirmPassword = CryptoJS.AES.decrypt(confirmPassword, SECRET_KEY).toString(CryptoJS.enc.Utf8);
+    const decryptedNewPassword = CryptoJS.AES.decrypt(newPassword, SECRET_KEY).toString(CryptoJS.enc.Utf8);
+    const decryptedConfirmPassword = CryptoJS.AES.decrypt(confirmPassword, SECRET_KEY).toString(CryptoJS.enc.Utf8);
 
     if (!decryptedNewPassword || !decryptedConfirmPassword) {
-      return res.status(400).json({ message: "Invalid password encryption" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid password encryption",
+      });
     }
 
     // ----------------- Match Check -----------------
     if (decryptedNewPassword !== decryptedConfirmPassword) {
       return res.status(400).json({
-        message: "New password and confirm password do not match",
+        success: false,
+        message: "Passwords do not match",
       });
     }
 
-    // ----------------- HASH Manually (because update used) -----------------
+    // ----------------- HASH Password -----------------
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(decryptedNewPassword, salt);
 
-    // ----------------- UPDATE (NO SAVE USED) -----------------
+    // ----------------- UPDATE -----------------
     await Student.findOneAndUpdate(
-      { email },
+      { email, instituteId },
       { password: hashedPassword },
       { new: true }
     );
 
+    // ----------------- CLEAN OTP (important 🔥) -----------------
+    await Otp.deleteMany({ email, instituteId });
+
     return res.status(200).json({
+      success: true,
       message: "Password changed successfully!",
     });
 
   } catch (err) {
     console.error("Change Password Error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 

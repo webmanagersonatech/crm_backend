@@ -63,22 +63,41 @@ export const createOtp = async (req: Request, res: Response) => {
 
 export const createOtpstudent = async (req: Request, res: Response) => {
   try {
-    const { error } = otpSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ message: error.details[0].message });
+
+
+    const { email, instituteId } = req.body;
+
+    if (!email || !instituteId) {
+      return res.status(400).json({ message: "Email and Institute ID are required" });
     }
-    const { email } = req.body;
-    const student = await Student.findOne({ email });
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    if (!instituteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Institute ID is required",
+      });
+    }
+
+    const student = await Student.findOne({ email, instituteId });
+
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    await Otp.deleteMany({ email, verified: false });
+    await Otp.deleteMany({ email, instituteId, verified: false });
 
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await Otp.create({ email, otp, expiresAt });
+
+    await Otp.create({ email, instituteId, otp, expiresAt });
 
     const emailData = {
       sender: { email: "no-reply@sonatech.ac.in", name: "HIKA" },
@@ -105,12 +124,67 @@ export const createOtpstudent = async (req: Request, res: Response) => {
       message: "OTP sent successfully to registered email",
       data: { email, expiresAt },
     });
+
   } catch (err: any) {
     console.error("Error creating OTP:", err.response?.body || err.message || err);
     res.status(500).json({ message: "Internal server error" });
   }
 };
+export const verifyOtpstudent = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, instituteId } = req.body;
 
+    // ✅ Validate input
+    if (!email || !otp || !instituteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP and instituteId are required",
+      });
+    }
+
+    // ✅ Find OTP with institute isolation
+    const otpDoc = await Otp.findOne({ email, otp, instituteId });
+
+    if (!otpDoc) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ✅ Check expiry
+    if (otpDoc.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    // ✅ Already used check
+    if (otpDoc.verified) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP already verified",
+      });
+    }
+
+    // ✅ Mark verified
+    otpDoc.verified = true;
+    await otpDoc.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+    });
+
+  } catch (err: any) {
+    console.error("Error verifying OTP:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
