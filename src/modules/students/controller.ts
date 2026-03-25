@@ -910,6 +910,34 @@ export const getpaymentrelateddata = async (
         .json({ success: false, message: "Student not found" });
     }
 
+   
+    const application = await Application.findOne({
+      applicationId: student.applicationId,
+    }).select("formStatus paymentStatus");
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+   
+    if (application.formStatus !== "Complete") {
+      return res.status(400).json({
+        success: false,
+        message: "Please complete your application before proceeding to payment.",
+      });
+    }
+
+  
+    if (application.paymentStatus === "Paid") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment already completed.",
+      });
+    }
+
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
     }).select("applicationFee gstPercentage paymentMethod");
