@@ -1337,7 +1337,7 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
       filter = { ...filter, instituteId: user.instituteId };
     } else if (user.role === "user") {
 
-      filter = { ...filter, instituteId: user.instituteId, userId: user._id };
+      filter = { ...filter, instituteId: user.instituteId, userId: user.id };
     }
 
 
