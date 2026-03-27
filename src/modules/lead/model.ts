@@ -43,7 +43,7 @@ const FollowUpSchema = new Schema(
     followUpDate: { type: Date },
     calltaken: { type: String },
     description: { type: String },
-
+    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
 );

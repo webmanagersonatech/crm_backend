@@ -580,25 +580,31 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
-    const existingByMobile = await Student.findOne({ instituteId, mobileNo });
+    const allowDuplicateInstitute = "INS-3-ZXYXKM";
 
-    if (existingByMobile) {
-      return res.status(409).json({
-        success: false,
-        message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
-      });
+
+    if (instituteId !== allowDuplicateInstitute) {
+
+      const existingByMobile = await Student.findOne({ instituteId, mobileNo });
+
+      if (existingByMobile) {
+        return res.status(409).json({
+          success: false,
+          message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
+        });
+      }
+
+      const existingByEmail = await Student.findOne({ instituteId, email });
+
+      if (existingByEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
+          ,
+        });
+      }
     }
 
-    // 2️⃣ Then check by EMAIL
-    const existingByEmail = await Student.findOne({ instituteId, email });
-
-    if (existingByEmail) {
-      return res.status(409).json({
-        success: false,
-        message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
-        ,
-      });
-    }
     // 🔍 BUILD SEARCH TEXT (AUTO)
     const searchText = buildSearchTextFromSections(
       personalDetails,
@@ -1486,26 +1492,31 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
-    const existingByMobile = await Student.findOne({ instituteId, mobileNo, studentId: { $ne: application.studentId }, });
+    const allowDuplicateInstitute = "INS-3-ZXYXKM";
 
-    if (existingByMobile) {
-      return res.status(409).json({
-        success: false,
-        message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
-      });
+
+    if (instituteId !== allowDuplicateInstitute) {
+
+      const existingByMobile = await Student.findOne({ instituteId, mobileNo, studentId: { $ne: application.studentId }, });
+
+      if (existingByMobile) {
+        return res.status(409).json({
+          success: false,
+          message: "This mobile number is already registered with an existing student account. Please use a different number or sign in to continue",
+        });
+      }
+
+      // 2️⃣ Then check by EMAIL
+      const existingByEmail = await Student.findOne({ instituteId, email, studentId: { $ne: application.studentId }, });
+
+      if (existingByEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
+          ,
+        });
+      }
     }
-
-    // 2️⃣ Then check by EMAIL
-    const existingByEmail = await Student.findOne({ instituteId, email, studentId: { $ne: application.studentId }, });
-
-    if (existingByEmail) {
-      return res.status(409).json({
-        success: false,
-        message: "This email address is already registered with an existing student account. Please use a different email or sign in to continue."
-        ,
-      });
-    }
-
     const personalSection = personalDetails.find(
       (s: any) => s.sectionName === "Personal Details"
     );

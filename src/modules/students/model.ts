@@ -50,7 +50,7 @@ const StudentSchema = new Schema<IStudent>(
     username: {
       type: String,
       required: true,
-    
+
     },
     password: { type: String, required: true },
     mobileNo: {
@@ -113,7 +113,15 @@ StudentSchema.virtual("application", {
 
 
 StudentSchema.plugin(mongoosePaginate);
-StudentSchema.index({ mobileNo: 1, instituteId: 1 }, { unique: true });
+StudentSchema.index(
+  { mobileNo: 1, instituteId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      instituteId: { $ne: "INS-3-ZXYXKM" },
+    },
+  }
+);
 StudentSchema.index({ username: 1 }, { unique: true });
 
 // Auto-generate studentId and hash password

@@ -102,6 +102,7 @@ export const createLead = async (req: AuthRequest, res: Response) => {
     communication: value.communication,
     followUpDate: value.followUpDate,
     description: value.description,
+    createdBy
   };
 
 
@@ -177,6 +178,7 @@ export const createThirdPartyLead = async (
     communication: "Phone",
     followUpDate: now,
     description: `Lead given by ${fullName || "Third Party Vendor"}`,
+    createdBy
   };
 
   const lead = await Lead.create({
@@ -1041,6 +1043,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
           followUpDate: finalFollowUpDate,
           calltaken,
           description,
+          createdBy: req.user?.id
         },
       };
     }
