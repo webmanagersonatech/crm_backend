@@ -271,7 +271,7 @@ export const generateUsernamesForInstitute = async (req: Request, res: Response)
         { username: { $exists: false } },
         { username: "" }
       ]
-    });
+    }).limit(5);
 
     let updatedCount = 0;
 

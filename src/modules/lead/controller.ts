@@ -5,6 +5,7 @@ import { createLeadSchema } from './lead.sanitize';
 import Application from '../applications/model';
 import { AuthRequest } from '../../middlewares/auth';
 import multer from "multer";
+import mongoose from "mongoose";
 import fs from "fs";
 import csv from "csv-parser";
 import path from "path";
@@ -813,6 +814,401 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const listOnlyFollowups = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      instituteId,
+      status,
+      candidateName,
+      phoneNumber,
+      calltaken,
+      userId,
+      leadId,
+      communication,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const user = req.user;
+
+    const currentuser = await User.findById(req.user?.id).lean();
+
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    let match: any = {};
+
+    // 🔹 Role-based filter
+    if (user.role === "superadmin") {
+      if (instituteId) match.instituteId = instituteId;
+    } else if (user.role === "admin") {
+      match.instituteId = user.instituteId;
+    } else {
+      match.instituteId = user.instituteId;
+    }
+
+    // 🔥 Only leads having followups
+    match["followups.0"] = { $exists: true };
+
+    // 🔹 Additional filters on lead fields
+    if (candidateName) {
+      match.candidateName = { $regex: candidateName, $options: "i" };
+    }
+
+    if (phoneNumber) {
+      match.phoneNumber = { $regex: phoneNumber, $options: "i" };
+    }
+
+    if (leadId) {
+      match.leadId = { $regex: leadId, $options: "i" };
+    }
+
+    const pipeline: any[] = [
+      { $match: match },
+
+      // 🔥 split followups array
+      { $unwind: "$followups" }
+    ];
+
+    // 🔹 Filter on followup fields
+    const followupMatch: any = {};
+
+    if (status) {
+      followupMatch["followups.status"] = status;
+    }
+
+    if (communication) {
+      followupMatch["followups.communication"] = communication;
+    }
+
+
+    if (userId) {
+      followupMatch["followups.createdBy"] = new mongoose.Types.ObjectId(userId as string);
+    } else if (
+      (user.role === "admin" && currentuser?.tempAdminAccess) ||
+      user.role === "user"
+    ) {
+      followupMatch["followups.createdBy"] = new mongoose.Types.ObjectId(user.id);
+    }
+
+
+    if (calltaken) {
+      followupMatch["followups.calltaken"] = { $regex: calltaken, $options: "i" };
+    }
+
+    if (Object.keys(followupMatch).length > 0) {
+      pipeline.push({
+        $match: followupMatch
+      });
+    }
+
+    // 🔹 Date filter (on followUpDate)
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      pipeline.push({
+        $match: {
+          "followups.followUpDate": dateFilter
+        }
+      });
+    }
+
+    // 🔥 JOIN institute collection
+    pipeline.push({
+      $lookup: {
+        from: "institutions",
+        localField: "instituteId",
+        foreignField: "instituteId",
+        as: "institute"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$institute",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    // 🔥 JOIN user collection for creator details
+    pipeline.push({
+      $lookup: {
+        from: "users",
+        localField: "followups.createdBy",
+        foreignField: "_id",
+        as: "creator"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$creator",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    // 🔥 Final shape (followup + lead + institute + creator)
+    pipeline.push({
+      $project: {
+        // Followup fields
+        _id: "$followups._id",
+        status: "$followups.status",
+        communication: "$followups.communication",
+        followUpDate: "$followups.followUpDate",
+        calltaken: {
+          $concat: ["$creator.firstname", " ", "$creator.lastname"]
+        },
+        description: "$followups.description",
+        createdBy: "$followups.createdBy",
+        createdAt: "$followups.createdAt",
+        updatedAt: "$followups.updatedAt",
+
+        // Lead fields
+        leadId: 1,
+        candidateName: 1,
+        instituteId: 1,
+        program: 1,
+        phoneNumber: 1,
+        counsellorName: "$followups.calltaken",
+
+        // Institute name
+        instituteName: "$institute.name",
+
+        // Creator details
+        creator: {
+          firstname: "$creator.firstname",
+          lastname: "$creator.lastname"
+        }
+      }
+    });
+
+    // 🔹 Sorting
+    pipeline.push({
+      $sort: { followUpDate: -1, createdAt: -1 }
+    });
+
+    // 🔹 Pagination using facet
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: "total" }],
+        data: [
+          { $skip: skip },
+          { $limit: limitNum }
+        ]
+      }
+    });
+
+    const result = await Lead.aggregate(pipeline);
+
+    const metadata = result[0]?.metadata || [];
+    const data = result[0]?.data || [];
+    const total = metadata[0]?.total || 0;
+
+    res.json({
+      data,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+export const exportFollowups = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      instituteId,
+      status,
+      candidateName,
+      phoneNumber,
+      calltaken,
+      userId,
+      leadId,
+      communication
+    } = req.query;
+
+    const user = req.user;
+
+    const currentuser = await User.findById(user?.id).lean();
+
+    let match: any = {};
+
+    // 🔹 Role-based filter
+    if (user.role === "superadmin") {
+      if (instituteId) match.instituteId = instituteId;
+    } else {
+      match.instituteId = user.instituteId;
+    }
+
+    // 🔥 Only leads having followups
+    match["followups.0"] = { $exists: true };
+
+    // 🔹 Lead filters
+    if (candidateName) {
+      match.candidateName = { $regex: candidateName, $options: "i" };
+    }
+
+    if (phoneNumber) {
+      match.phoneNumber = { $regex: phoneNumber, $options: "i" };
+    }
+
+    if (leadId) {
+      match.leadId = { $regex: leadId, $options: "i" };
+    }
+
+    const pipeline: any[] = [
+      { $match: match },
+      { $unwind: "$followups" }
+    ];
+
+    // 🔹 Followup filters
+    const followupMatch: any = {};
+
+    if (status) {
+      followupMatch["followups.status"] = status;
+    }
+
+    if (communication) {
+      followupMatch["followups.communication"] = communication;
+    }
+
+    if (userId) {
+      followupMatch["followups.createdBy"] = new mongoose.Types.ObjectId(userId as string);
+    } else if (
+      (user.role === "admin" && currentuser?.tempAdminAccess) ||
+      user.role === "user"
+    ) {
+      followupMatch["followups.createdBy"] = new mongoose.Types.ObjectId(user.id);
+    }
+
+    if (calltaken) {
+      followupMatch["followups.calltaken"] = { $regex: calltaken, $options: "i" };
+    }
+
+    if (Object.keys(followupMatch).length > 0) {
+      pipeline.push({ $match: followupMatch });
+    }
+
+    // 🔹 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      pipeline.push({
+        $match: {
+          "followups.followUpDate": dateFilter
+        }
+      });
+    }
+
+    // 🔥 Lookup institute
+    pipeline.push({
+      $lookup: {
+        from: "institutions",
+        localField: "instituteId",
+        foreignField: "instituteId",
+        as: "institute"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$institute",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    // 🔥 Lookup creator
+    pipeline.push({
+      $lookup: {
+        from: "users",
+        localField: "followups.createdBy",
+        foreignField: "_id",
+        as: "creator"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$creator",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    // 🔥 Final projection
+    pipeline.push({
+      $project: {
+        _id: "$followups._id",
+        status: "$followups.status",
+        communication: "$followups.communication",
+        followUpDate: "$followups.followUpDate",
+        calltaken: {
+          $concat: ["$creator.firstname", " ", "$creator.lastname"]
+        },
+        description: "$followups.description",
+        createdAt: "$followups.createdAt",
+        counsellorName: "$followups.calltaken",
+        leadId: 1,
+        candidateName: 1,
+        phoneNumber: 1,
+        program: 1,
+
+        instituteName: "$institute.name",
+
+      }
+    });
+
+    // 🔹 Sorting (important for export)
+    pipeline.push({
+      $sort: { followUpDate: -1, createdAt: -1 }
+    });
+
+    // 🚀 Execute
+    const data = await Lead.aggregate(pipeline);
+
+    res.json({
+      total: data.length,
+      data
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
 export const exportLeads = async (req: AuthRequest, res: Response) => {
   try {
     const {
