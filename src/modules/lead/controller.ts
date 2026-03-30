@@ -923,7 +923,7 @@ export const listOnlyFollowups = async (req: AuthRequest, res: Response) => {
 
       pipeline.push({
         $match: {
-          "followups.followUpDate": dateFilter
+          "followups.createdAt": dateFilter
         }
       });
     }
@@ -1130,7 +1130,7 @@ export const exportFollowups = async (req: AuthRequest, res: Response) => {
 
       pipeline.push({
         $match: {
-          "followups.followUpDate": dateFilter
+          "followups.createdAt": dateFilter
         }
       });
     }
