@@ -7,10 +7,8 @@ import { AuthRequest } from '../../middlewares/auth';
 import multer from "multer";
 import Settings from '../settings/model';
 import mongoose from "mongoose";
-import fs from "fs";
-import csv from "csv-parser";
-import path from "path";
 import Student from '../students/model';
+import Other from '../others/model'
 
 const upload = multer({
   dest: "uploads/",
@@ -716,7 +714,7 @@ export const createLeadfromonline = async (req: Request, res: Response) => {
 //     // Update each lead
 //     for (const lead of leadsToUpdate) {
 //       const programName = lead.program;
-      
+
 //       // ✅ Check if programName exists and is a string
 //       if (programName && typeof programName === 'string') {
 //         const courseId = courseMapping[programName];
@@ -1699,7 +1697,15 @@ export const deleteLead = async (req: AuthRequest, res: Response) => {
     const lead = await Lead.findByIdAndDelete(req.params.id);
     if (!lead) return res.status(404).json({ message: 'Not found' });
 
+    if (lead.leadId) {
+      await Other.findOneAndUpdate(
+        { leadId: req.params.id },   // ✅ fixed syntax
+        { $unset: { leadId: "" } }   // ✅ removes the field
+      );
+    }
+
     res.json({ message: 'deleted' });
+
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

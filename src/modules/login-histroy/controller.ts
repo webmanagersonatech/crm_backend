@@ -20,7 +20,7 @@ export const createLoginHistory = async (req: AuthRequest, res: Response) => {
       userId: user.id,
       role: user.role,
       lastLoginTime: new Date(),
-      ...value, 
+      ...value,
     });
 
     return res.status(201).json({
@@ -54,10 +54,9 @@ export const listLoginHistories = async (req: AuthRequest, res: Response) => {
     if (user.role === 'superadmin') {
       if (instituteId) filter.instituteId = instituteId;
       if (userId) filter.userId = userId;
-      if (role) filter.role = role;
     } else if (user.role === 'admin') {
       filter.instituteId = user.instituteId;
-      filter.role = 'user';
+      filter.userId = user.id;
       if (userId) filter.userId = userId;
     } else if (user.role === 'user') {
       filter.userId = user.id;

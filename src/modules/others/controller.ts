@@ -6,7 +6,26 @@ import { AuthRequest } from '../../middlewares/auth';
 import XLSX from 'xlsx';
 import User from '../auth/auth.model';
 
+const getFieldValue = (extraFields: any, keys: string[]) => {
+  if (!extraFields) return undefined;
 
+  const normalizedFields: any = {};
+
+  // normalize keys (lowercase + remove spaces)
+  Object.keys(extraFields).forEach((key) => {
+    const normalizedKey = key.toLowerCase().replace(/\s+/g, "");
+    normalizedFields[normalizedKey] = extraFields[key];
+  });
+
+  for (const key of keys) {
+    const normalizedKey = key.toLowerCase().replace(/\s+/g, "");
+    if (normalizedFields[normalizedKey]) {
+      return normalizedFields[normalizedKey];
+    }
+  }
+
+  return undefined;
+};
 // 🔹 Create single record
 export const createOther = async (req: AuthRequest, res: Response) => {
   try {
@@ -470,6 +489,7 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
     const createdBy = req.user!.id;
 
     const other = await Other.findOne({ recordId }).lean();
+    console.log(other, "other")
     if (!other) {
       return res.status(404).json({ message: "Other record not found" });
     }
@@ -492,6 +512,22 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const email = getFieldValue(other.extraFields, [
+      "email",
+      "emailid",
+      "mail",
+      "emailaddress",
+    ]);
+
+    const city = getFieldValue(other.extraFields, ["city", "town"]);
+    const state = getFieldValue(other.extraFields, ["state", "province"]);
+    const country = getFieldValue(other.extraFields, ["country"]);
+    const dob = getFieldValue(other.extraFields, [
+      "dob",
+      "dateofbirth",
+      "birthdate",
+    ]);
+
     const user = await User.findById(createdBy).lean();
     const calltaken =
       `${user?.firstname ?? ""} ${user?.lastname ?? ""}`.trim() || "System";
@@ -511,6 +547,10 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
       instituteId: other.instituteId,
       candidateName: other.name,
       phoneNumber: other.phone,
+      email: email || undefined,
+      city: city || undefined,
+      state: state || undefined,
+      country: country || undefined,
       dateOfBirth: null,
       program: "",
       status: "New",
