@@ -169,6 +169,9 @@ export const createThirdPartyLead = async (
   if (!createdBy || !instituteId) {
     return res.status(401).json({ message: "Unauthorized user" });
   }
+  if (instituteId === "INS-DHJMFQ6G" && !value.programId) {
+    value.programId = "GMBA5H7KQZ";
+  }
   let programName = "";
 
   if (value.programId) {
