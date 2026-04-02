@@ -3,7 +3,10 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ISettings extends Document {
   instituteId: string;
   logo?: string; // Base64 string for institute logo
-  courses?: string[]; // Array of course names or IDs
+  courses?: {
+    name: string;
+    courseId?: string; // ✅ optional
+  }[];
   paymentMethod: 'razorpay' | 'instamojo';
   paymentCredentials: {
     keyId?: string;
@@ -29,7 +32,13 @@ const SettingsSchema = new Schema<ISettings>(
   {
     instituteId: { type: String, required: true, unique: true },
     logo: { type: String }, // Base64 encoded logo
-    courses: [{ type: String }], // Multiple courses or course IDs
+    courses: [
+      {
+        _id: false, // ✅ disable auto _id
+        name: { type: String, required: true },
+        courseId: { type: String }, // optional
+      }
+    ],
     paymentMethod: {
       type: String,
       enum: ['razorpay', 'instamojo'],

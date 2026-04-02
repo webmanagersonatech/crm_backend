@@ -5,6 +5,7 @@ import { createLeadSchema } from './lead.sanitize';
 import Application from '../applications/model';
 import { AuthRequest } from '../../middlewares/auth';
 import multer from "multer";
+import Settings from '../settings/model';
 import mongoose from "mongoose";
 import fs from "fs";
 import csv from "csv-parser";
@@ -83,6 +84,19 @@ export const createLead = async (req: AuthRequest, res: Response) => {
 
   const instituteId = req.body.instituteId || req.user?.instituteId;
 
+  const settings = await Settings.findOne({ instituteId });
+
+  const selectedCourse = settings?.courses?.find(
+    (course: any) => course.courseId === value.programId
+  );
+
+  if (!selectedCourse) {
+    return res.status(400).json({ message: "Invalid programId" });
+  }
+
+  value.program = selectedCourse.name;
+  value.programId = selectedCourse.courseId;
+
   const existingLeads = await Lead.find({
     phoneNumber: value.phoneNumber,
   });
@@ -157,7 +171,25 @@ export const createThirdPartyLead = async (
   if (!createdBy || !instituteId) {
     return res.status(401).json({ message: "Unauthorized user" });
   }
+  let programName = "";
 
+  if (value.programId) {
+    const settings = await Settings.findOne({ instituteId });
+
+    const selectedCourse = settings?.courses?.find(
+      (course: any) => course.courseId === value.programId
+    );
+
+    if (!selectedCourse) {
+      return res.status(400).json({ message: "Invalid programId" });
+    }
+
+    programName = selectedCourse.name;
+
+    // ✅ assign back
+    value.programId = selectedCourse.courseId;
+    value.program = selectedCourse.name;
+  }
   const existingLeads = await Lead.find({
     phoneNumber: value.phoneNumber,
   });
@@ -539,6 +571,7 @@ export const createThirdPartyLead = async (
 //   }
 // };
 
+
 export const createLeadfromonline = async (req: Request, res: Response) => {
   const { error, value } = createLeadSchema.validate(req.body);
 
@@ -549,9 +582,32 @@ export const createLeadfromonline = async (req: Request, res: Response) => {
     });
   }
 
-  const { instituteId, phoneNumber } = value;
+  const { instituteId, phoneNumber, programId } = value;
 
   try {
+
+    let programName = "";
+
+    if (programId) {
+      const settings = await Settings.findOne({ instituteId });
+
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid programId",
+        });
+      }
+
+      programName = selectedCourse.name;
+
+      // ✅ assign back
+      value.programId = selectedCourse.courseId;
+      value.program = selectedCourse.name;
+    }
     // 🔍 Check Duplicate
     const existingLead = await Lead.findOne({ instituteId, phoneNumber });
 
@@ -615,7 +671,100 @@ export const createLeadfromonline = async (req: Request, res: Response) => {
     });
   }
 };
+// export const updateProgramIdsForOldLeads = async (req: Request, res: Response) => {
+//   const { instituteId } = req.body;
 
+//   if (!instituteId) {
+//     return res.status(400).json({
+//       success: false,
+//       message: "instituteId is required"
+//     });
+//   }
+
+//   try {
+//     // Get settings to fetch course mapping
+//     const settings = await Settings.findOne({ instituteId });
+
+//     if (!settings || !settings.courses) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Settings not found for this institute"
+//       });
+//     }
+
+//     // Create mapping from program name to courseId
+//     const courseMapping: Record<string, string> = {};
+//     settings.courses.forEach((course: any) => {
+//       courseMapping[course.name] = course.courseId;
+//     });
+
+//     // Find all leads without programId
+//     const leadsToUpdate = await Lead.find({
+//       instituteId,
+//       program: { $exists: true, $ne: "" },
+//       $or: [
+//         { programId: { $exists: false } },
+//         { programId: null },
+//         { programId: "" }
+//       ]
+//     });
+
+//     let updatedCount = 0;
+//     let notFoundCount = 0;
+//     const notFoundPrograms: Array<{ leadId: string; program: string; candidateName: string }> = [];
+
+//     // Update each lead
+//     for (const lead of leadsToUpdate) {
+//       const programName = lead.program;
+      
+//       // ✅ Check if programName exists and is a string
+//       if (programName && typeof programName === 'string') {
+//         const courseId = courseMapping[programName];
+
+//         if (courseId) {
+//           await Lead.updateOne(
+//             { _id: lead._id },
+//             { $set: { programId: courseId } }
+//           );
+//           updatedCount++;
+//         } else {
+//           notFoundCount++;
+//           notFoundPrograms.push({
+//             leadId: lead.leadId,
+//             program: programName,
+//             candidateName: lead.candidateName
+//           });
+//         }
+//       } else {
+//         notFoundCount++;
+//         notFoundPrograms.push({
+//           leadId: lead.leadId,
+//           program: lead.program || "No program name",
+//           candidateName: lead.candidateName
+//         });
+//       }
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Updated ${updatedCount} leads successfully`,
+//       stats: {
+//         totalLeadsFound: leadsToUpdate.length,
+//         updated: updatedCount,
+//         notMatched: notFoundCount
+//       },
+//       notMatchedPrograms: notFoundPrograms
+//     });
+
+//   } catch (error: any) {
+//     console.error("Error updating leads:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to update leads",
+//       error: error.message
+//     });
+//   }
+// };
 // Export middleware
 export const uploadMiddleware = upload.single("file");
 
@@ -683,6 +832,7 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     } = req.query;
     const user = req.user;
 
+
     let filter: any = {};
 
     // 🔹 Role-based filters
@@ -690,6 +840,9 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
       if (instituteId) filter.instituteId = instituteId;
     } else if (user.role === "admin") {
       filter.instituteId = user.instituteId;
+      if (user.departments && user.departments.length > 0) {
+        filter.programId = { $in: user.departments };
+      }
     } else if (user.role === "user") {
       filter = {
         instituteId: user.instituteId,
@@ -1237,6 +1390,9 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
       if (instituteId) filter.instituteId = instituteId;
     } else if (user.role === "admin") {
       filter.instituteId = user.instituteId;
+      if (user.departments && user.departments.length > 0) {
+        filter.programId = { $in: user.departments };
+      }
     } else if (user.role === "user") {
       filter = {
         instituteId: user.instituteId,
@@ -1351,6 +1507,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       followups,
       isduplicate: _ignore1,
       duplicateReason: _ignore2,
+      programId,
       ...rest
     } = req.body;
 
@@ -1392,6 +1549,28 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       duplicateReason = lead.duplicateReason || "";
     }
 
+
+    let programUpdate: any = {};
+
+    if (programId) {
+      const instituteId = rest.instituteId || lead.instituteId;
+
+      const settings = await Settings.findOne({ instituteId });
+
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({ message: "Invalid programId" });
+      }
+
+      programUpdate = {
+        programId: selectedCourse.courseId,
+        program: selectedCourse.name,
+      };
+    }
+
     // ===============================
     // 🔹 Normalize date
     // ===============================
@@ -1422,6 +1601,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         isduplicate,
         duplicateReason,
         ...rest,
+        ...programUpdate,
       },
     };
 

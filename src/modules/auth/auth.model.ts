@@ -8,12 +8,13 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password: string;
-  userType: string; // Added userType field
+  userType?: string; // Added userType field
   mobileNo: string;
   designation: string;
+  departments?: string[];
   role: "superadmin" | "admin" | "user";
   instituteId: string;
-  apiKey: { type: String, unique: true, sparse: true },
+  apiKey?: { type: String, unique: true, sparse: true },
   lastLoginTimeDate?: Date;
   status: "active" | "inactive";
   tokenVersion: number;
@@ -31,18 +32,34 @@ const UserSchema = new Schema<IUser>(
     mobileNo: { type: String, required: true, unique: true },
     designation: { type: String, required: true },
     userType: { type: String, },
+    role: { type: String, enum: ["superadmin", "admin", "user",], default: "user" },
     apiKey: { type: String, unique: true, sparse: true },
-    role: { type: String, enum: ["superadmin", "admin", "user"], default: "user" },
+
     instituteId: { type: String, required: true },
+    departments: {
+      type: [String],
+      default: [],
+    },
+
     lastLoginTimeDate: { type: Date, default: null },
     status: { type: String, enum: ["active", "inactive"], default: "inactive" },
     tempAdminAccess: { type: Boolean, default: false },
     tokenVersion: { type: Number, default: 0 }
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+
 );
 
-
+UserSchema.virtual("institute", {
+  ref: "Institution",
+  localField: "instituteId",
+  foreignField: "instituteId",
+  justOne: true,
+});
 UserSchema.plugin(mongoosePaginate);
 
 

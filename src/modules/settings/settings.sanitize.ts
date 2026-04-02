@@ -7,7 +7,20 @@ export const settingsSchema = Joi.object({
     .pattern(/^data:image\/(png|jpg|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/)
     .optional(),
 
-  courses: Joi.array().items(Joi.string()).optional(),
+  courses: Joi.array()
+    .items(
+      Joi.alternatives().try(
+        // ✅ Old format (string)
+        Joi.string(),
+
+        // ✅ New format (object)
+        Joi.object({
+          name: Joi.string().required(),
+          courseId: Joi.string().allow('').optional(),
+        })
+      )
+    )
+    .optional(),
 
   // ✅ Payment Method
   paymentMethod: Joi.string()

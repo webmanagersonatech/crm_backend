@@ -6,7 +6,7 @@ export interface ILead extends Document {
   leadId: string;
   instituteId: string;
   applicationId?: string;
-
+  programId?: string;
   program?: string;
   campaign?: string;
   candidateName: string;
@@ -59,6 +59,7 @@ const LeadSchema = new Schema<ILead>(
     ugDegree: { type: String },
     applicationId: { type: String },
     phoneNumber: { type: String, },
+    programId: { type: String },
     medium: { type: String },
     isduplicate: {
       type: Boolean,

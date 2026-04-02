@@ -5,10 +5,15 @@ export const createApplicationSchema = Joi.object({
     'any.required': 'Institute ID is required',
     'string.empty': 'Institute ID cannot be empty'
   }),
-  program: Joi.string().required().messages({
-    'any.required': 'Program is required',
-    'string.empty': 'Program cannot be empty',
+  
+  programId: Joi.string().required().messages({
+    "any.required": "Program ID is required",
+    "string.empty": "Program ID cannot be empty",
   }),
+
+  // ✅ OPTIONAL (auto-filled in backend)
+  program: Joi.string().optional(),
+
   academicYear: Joi.string().required().messages({
     'any.required': 'Academic year is required'
   }),

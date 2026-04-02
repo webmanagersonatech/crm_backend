@@ -2,7 +2,7 @@ import Joi from 'joi';
 
 export const createLeadSchema = Joi.object({
   instituteId: Joi.string().required(),
-  program: Joi.string().required(),
+  program: Joi.string().optional(),
   candidateName: Joi.string().required(),
   ugDegree: Joi.string().optional().allow(''),
   phoneNumber: Joi.string().pattern(/^[6-9]\d{9}$/).required().messages({
@@ -16,6 +16,7 @@ export const createLeadSchema = Joi.object({
   state: Joi.string().optional(),
   city: Joi.string().optional(),
   status: Joi.string().optional(),
+  programId: Joi.string().optional().allow(''),
   communication: Joi.string().optional(),
   followUpDate: Joi.date().optional().allow(null, ""),
   description: Joi.string().optional().allow(''),

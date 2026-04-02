@@ -488,13 +488,34 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
   try {
     const instituteId = req.body.instituteId || req.user?.instituteId;
 
-    const program = req.body.program;
-
+    const programId = req.body.programId;
+    let program = "";
     const settings = await Settings.findOne({ instituteId })
+
+    if (programId) {
+      const settings = await Settings.findOne({ instituteId });
+
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid programId",
+        });
+      }
+
+      program = selectedCourse.name;
+
+      req.body.programId = selectedCourse.courseId;
+      req.body.program = selectedCourse.name;
+    }
 
     if (!settings && !req.body.academicYear) {
       return res.status(400).json({ message: 'Academic year not found' })
     }
+
     const academicYear = req.body.academicYear || settings?.academicYear
     const leadId = req.body.leadId;
 
@@ -514,6 +535,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     // Validate
     const { error } = createApplicationSchema.validate({
       instituteId,
+      programId,
       program,
       academicYear,
       personalDetails,
@@ -673,6 +695,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       firstname,
       lastname: flattenedPersonalFields["Last Name"] || "",
       email,
+      programId,
       academicYear,
       interactions: leadStatus,
       country,
@@ -719,6 +742,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     // Create application (store **arrays** directly!)
     const application = await Application.create({
       instituteId,
+      programId,
       program,
       userId: createdBy,
       leadId,
@@ -961,13 +985,31 @@ export const createApplicationByStudent = async (
         : req.body.educationDetails || [];
 
     const instituteId = req.body.instituteId || req.student?.instituteId;
-    const program = req.body.program;
+    const programId = req.body.programId;
+    let program = "";
+    const settings = await Settings.findOne({ instituteId });
+
+    if (programId) {
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid programId",
+        });
+      }
+
+      program = selectedCourse.name;
+    }
     const academicYear = req.body.academicYear;
     const applicationSource =
       req.body.applicationSource || "online";
     // Validate request
     const { error } = createApplicationSchema.validate({
       instituteId,
+      programId,
       program,
       academicYear,
       personalDetails,
@@ -1127,6 +1169,7 @@ export const createApplicationByStudent = async (
         { applicationId: student.applicationId },
         {
           instituteId,
+          programId,
           program,
           createdBystudent,
           Applicationmode,
@@ -1149,6 +1192,7 @@ export const createApplicationByStudent = async (
       );
       student.country = country;
       student.state = state;
+      student.programId = programId;
       student.city = city;
       student.academicYear = academicYear;
       student.interactions = application?.interactions;
@@ -1166,6 +1210,7 @@ export const createApplicationByStudent = async (
       application = await Application.create({
         instituteId,
         program,
+        programId,
         createdBystudent,
         Applicationmode,
         academicYear,
@@ -1188,6 +1233,7 @@ export const createApplicationByStudent = async (
       student.country = country;
       student.state = state;
       student.city = city;
+      student.programId = programId;
       student.interactions = "New"
       student.bloodGroup = bloodGroup;
       student.hostelWilling = hostelWilling;
@@ -1335,6 +1381,9 @@ export const listpendingApplications = async (req: AuthRequest, res: Response) =
     } else if (user.role === "admin") {
 
       filter = { ...filter, instituteId: user.instituteId };
+      if (user.departments && user.departments.length > 0) {
+        filter.programId = { $in: user.departments };
+      }
     } else if (user.role === "user") {
 
       filter = { ...filter, instituteId: user.instituteId, userId: user.id };
@@ -1415,7 +1464,25 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
 
 
     const instituteId = req.body.instituteId || application.instituteId
-    const program = req.body.program || application.program
+    const programId = req.body.programId || application.programId;
+    let program = application.program; // default existing
+    const settings = await Settings.findOne({ instituteId });
+
+    if (req.body.programId) {
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === req.body.programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid programId",
+        });
+      }
+
+      program = selectedCourse.name;
+    }
+
     const academicYear = req.body.academicYear || application.academicYear
 
 
@@ -1433,6 +1500,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     // ✅ Validate
     const { error } = createApplicationSchema.validate({
       instituteId,
+      programId,
       program,
       academicYear,
       personalDetails,
@@ -1595,7 +1663,8 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
 
     // ✅ Update document
     application.instituteId = instituteId
-    application.program = program
+    application.programId = programId;
+    application.program = program;
     application.academicYear = academicYear
     application.personalDetails = personalDetails
     application.country = country ?? application.country;
@@ -1611,6 +1680,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       firstname,
       email,
       mobileNo,
+      programId,
       country: application.country,
       state: application.state,
       city: application.city,
@@ -1735,6 +1805,9 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       filter = {}
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
+      if (user.departments && user.departments.length > 0) {
+        filter.programId = { $in: user.departments };
+      }
     } else if (user.role === 'user') {
       filter = {
         instituteId: user.instituteId,
@@ -1899,6 +1972,9 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
       filter = {}
     } else if (user.role === 'admin') {
       filter = { instituteId: user.instituteId }
+      if (user.departments && user.departments.length > 0) {
+        filter.programId = { $in: user.departments };
+      }
     } else if (user.role === 'user') {
       filter = {
         instituteId: user.instituteId,

@@ -10,6 +10,7 @@ export interface IStudent extends Document {
   lastname: string;
   email: string;
   country?: string;
+  programId?:string;
   applicationId?: string;
   username: string;
   password: string;
@@ -46,6 +47,7 @@ const StudentSchema = new Schema<IStudent>(
     firstname: { type: String, required: true },
     lastname: { type: String, },
     applicationId: { type: String },
+    programId: { type: String },
     email: { type: String },
     username: {
       type: String,

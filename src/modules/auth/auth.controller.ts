@@ -35,9 +35,19 @@ export const register = async (req: Request, res: Response) => {
       lastname: Joi.string().required(),
       username: Joi.string().alphanum().min(3).max(30).required(),
       email: Joi.string().email().required(),
-      userType: Joi.string().optional(),
+      userType: Joi.string().when('role', {
+        is: Joi.valid('user',),
+        then: Joi.string().required(),
+        otherwise: Joi.optional().allow(''),
+      }),
       password: Joi.string().min(6).required(),
-
+      departments: Joi.array()
+        .items(Joi.string())
+        .when('role', {
+          is: 'department_user',
+          then: Joi.array().min(1).required(),
+          otherwise: Joi.optional(),
+        }),
       mobileNo: Joi.string()
         .pattern(/^[0-9]{10,15}$/)
         .required()
@@ -47,7 +57,9 @@ export const register = async (req: Request, res: Response) => {
         }),
 
       designation: Joi.string().required(),
-      role: Joi.string().valid('superadmin', 'admin', 'user').default('user'),
+      role: Joi.string()
+        .valid('superadmin', 'admin', 'user', 'department_user')
+        .default('user'),
       instituteId: Joi.string().required(),
       status: Joi.string().valid('active', 'inactive').default('inactive'),
 
@@ -247,14 +259,19 @@ export const login = async (req: Request, res: Response) => {
     );
 
     // ---------------- Generate JWT ----------------
-    const token = generateToken({
+
+    const tokenPayload: any = {
       id: user._id,
       role: user.role,
       email: user.email,
       instituteId: user.instituteId,
-      tokenVersion: user.tokenVersion
+      tokenVersion: user.tokenVersion,
+    };
 
-    });
+    if (user.userType === "department_user") {
+      tokenPayload.departments = user.departments || [];
+    }
+    const token = generateToken(tokenPayload);
 
     // ---------------- Create/Update Login History ----------------
     if (user.role !== "superadmin") {
@@ -362,6 +379,10 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
       limit,
       sort: { createdAt: -1 },
       select: "-password",
+      populate: [
+        { path: "institute", select: "name" },
+      ],
+
     });
 
     return res.status(200).json({

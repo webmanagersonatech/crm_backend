@@ -160,6 +160,12 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       }
     } else if (user.role === "admin") {
       leadFilter.instituteId = user.instituteId;
+      if (user.departments && user.departments.length > 0) {
+        leadFilter.programId = { $in: user.departments }; // ✅ for leads
+
+        // ⚠️ only if Application also has programId
+        appFilter.programId = { $in: user.departments }; // ✅ for applications
+      }
       appFilter.instituteId = user.instituteId;
     } else {
       leadFilter = { instituteId: user.instituteId, createdBy: user.id };
@@ -309,6 +315,9 @@ export const getNewAndFollowupLeads = async (req: AuthRequest, res: Response) =>
         leadBaseFilter.instituteId = instituteId;
       }
     } else if (user.role === "admin") {
+      if (user.departments && user.departments.length > 0) {
+        leadBaseFilter.programId = { $in: user.departments };
+      }
       leadBaseFilter.instituteId = user.instituteId;
     } else {
       leadBaseFilter.instituteId = user.instituteId;

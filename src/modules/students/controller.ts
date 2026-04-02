@@ -462,6 +462,9 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
       if (instituteId !== "all") query.instituteId = instituteId;
     } else if (userRole === "admin") {
       query.instituteId = req.user.instituteId;
+      if (req.user.departments && req.user.departments.length > 0) {
+        query.programId = { $in: req.user.departments };
+      }
     } else {
       return res.status(403).json({
         status: false,
@@ -567,6 +570,9 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
       if (instituteId !== "all") query.instituteId = instituteId;
     } else if (userRole === "admin") {
       query.instituteId = req.user.instituteId;
+      if (req.user.departments && req.user.departments.length > 0) {
+        query.programId = { $in: req.user.departments };
+      }
     } else {
       return res.status(403).json({
         status: false,
@@ -910,7 +916,7 @@ export const getpaymentrelateddata = async (
         .json({ success: false, message: "Student not found" });
     }
 
-   
+
     const application = await Application.findOne({
       applicationId: student.applicationId,
     }).select("formStatus paymentStatus");
@@ -922,7 +928,7 @@ export const getpaymentrelateddata = async (
       });
     }
 
-   
+
     if (application.formStatus !== "Complete") {
       return res.status(400).json({
         success: false,
@@ -930,7 +936,7 @@ export const getpaymentrelateddata = async (
       });
     }
 
-  
+
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
     }).select("applicationFee gstPercentage paymentMethod");

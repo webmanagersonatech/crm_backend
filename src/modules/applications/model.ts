@@ -10,6 +10,7 @@ export interface IApplication extends Document {
 
   instituteId: string;
   studentId: string;
+  programId?: string;
   program: string;
   createdBystudent?: boolean;
   applicationSource?: string;
@@ -56,6 +57,7 @@ const ApplicationSchema = new Schema<IApplication>(
     },
 
     createdBystudent: { type: Boolean, default: false },
+    programId: { type: String, required: true },
     program: { type: String, required: true },
     interactions: {
       type: String,
