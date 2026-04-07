@@ -1718,7 +1718,100 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
   }
 }
 
+// export const updateProgramIdsForOldApplications = async (req: Request, res: Response) => {
+//   const { instituteId } = req.body;
+
+//   if (!instituteId) {
+//     return res.status(400).json({
+//       success: false,
+//       message: "instituteId is required"
+//     });
+//   }
+
+//   try {
+//     // ✅ Get settings
+//     const settings = await Settings.findOne({ instituteId });
+
+//     if (!settings || !settings.courses) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Settings not found"
+//       });
+//     }
+
+//     // ✅ Create mapping
+//     const courseMapping: Record<string, string> = {};
+//     settings.courses.forEach((course: any) => {
+//       courseMapping[course.name] = course.courseId;
+//     });
+
+//     // ✅ Find old applications without programId
+//     const applications = await Application.find({
+//       instituteId,
+//       program: { $exists: true, $ne: "" },
+//       $or: [
+//         { programId: { $exists: false } },
+//         { programId: null },
+//         { programId: "" }
+//       ]
+//     });
+
+//     let updatedCount = 0;
+//     let notFoundCount = 0;
+//     const notMatched: any[] = [];
+
+//     for (const app of applications) {
+//       const programName = app.program;
+
+//       if (programName && typeof programName === "string") {
+//         const courseId = courseMapping[programName];
+
+//         if (courseId) {
+//           await Application.updateOne(
+//             { _id: app._id },
+//             { $set: { programId: courseId } }
+//           );
+
+//           // ✅ also update Student table (important in your flow)
+//           await Student.updateOne(
+//             { studentId: app.studentId },
+//             { $set: { programId: courseId } }
+//           );
+
+//           updatedCount++;
+//         } else {
+//           notFoundCount++;
+//           notMatched.push({
+//             applicationId: app._id,
+//             program: programName,
+//             applicantName: app.applicantName
+//           });
+//         }
+//       }
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Updated ${updatedCount} applications`,
+//       stats: {
+//         total: applications.length,
+//         updated: updatedCount,
+//         notMatched: notFoundCount
+//       },
+//       notMatched
+//     });
+
+//   } catch (error: any) {
+//     console.error(error);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message
+//     });
+//   }
+// };
+
 // 🔍 Get Single Application
+
 export const getApplication = async (req: Request, res: Response) => {
   try {
     const application = await Application.findById(req.params.id).populate('userId', 'firstname lastname role instituteId');
@@ -1831,10 +1924,11 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       filter.applicantName = { $regex: req.query.applicantName, $options: "i" };
     }
     if (req.query.program) {
-      filter.program = {
-        $regex: req.query.program,
-        $options: "i",
-      };
+      if (Array.isArray(req.query.program)) {
+        filter.programId = { $in: req.query.program }; // ✅ use programId field
+      } else {
+        filter.programId = req.query.program;
+      }
     }
 
     if (req.query.country) filter.country = req.query.country;
@@ -1939,6 +2033,15 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
         extractKeyOptionsForFilter(form.educationDetails || []);
     }
 
+    const settings = await Settings.findOne({ instituteId: filter.instituteId });
+
+    let courses = settings?.courses || [];
+
+    if (user.departments && user.departments.length > 0) {
+      courses = courses.filter((course: any) =>
+        user.departments.includes(course.courseId)
+      );
+    }
     res.status(200).json({
       success: true,
       message: 'Applications fetched successfully',
@@ -1950,6 +2053,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       },
       data: applications.docs,
       academicYears,
+      courses,
       filters: {
         personalDetails: personalDetailsKeyValues,
         educationDetails: educationDetailsKeyValues
@@ -1997,11 +2101,13 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
     if (req.query.applicantName) {
       filter.applicantName = { $regex: req.query.applicantName, $options: "i" };
     }
+
     if (req.query.program) {
-      filter.program = {
-        $regex: req.query.program,
-        $options: "i",
-      };
+      if (Array.isArray(req.query.program)) {
+        filter.programId = { $in: req.query.program }; 
+      } else {
+        filter.programId = req.query.program;
+      }
     }
 
     if (req.query.country) filter.country = req.query.country;

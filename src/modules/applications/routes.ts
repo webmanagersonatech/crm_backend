@@ -15,6 +15,7 @@ import {
     updateAcademicYearInMatchedApplicationStudent,
     exportApplications,
     findUnmatchedStudentId,
+    // updateProgramIdsForOldApplications,
     bulkUploadApplications,
     findUnmatchedStudentIds
 } from './controller'
@@ -63,6 +64,10 @@ router.post(
     bulkUpload.single("file"),
     bulkUploadApplications
 );
+// router.post(
+//     "/update-old-program-ids",
+//     updateProgramIdsForOldApplications
+// );
 
 router.post("/", protect, upload.any(), createApplication);
 router.post("/updateacadamicyear", findUnmatchedStudentIds);

@@ -879,6 +879,13 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     if (leadId) {
       filter.leadId = { $regex: leadId, $options: "i" };
     }
+    if (req.query.program) {
+      if (Array.isArray(req.query.program)) {
+        filter.programId = { $in: req.query.program };
+      } else {
+        filter.programId = req.query.program;
+      }
+    }
 
     // 🔹 Duplicate filter
     if (isduplicate === "true") {
@@ -958,10 +965,20 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
         }
       }
     ]);
+    const settings = await Settings.findOne({ instituteId: filter.instituteId });
+
+    let courses = settings?.courses || [];
+
+    if (user.departments && user.departments.length > 0) {
+      courses = courses.filter((course: any) =>
+        user.departments.includes(course.courseId)
+      );
+    }
 
     res.json({
       ...result,
-      statusCounts
+      statusCounts,
+      courses
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -1429,6 +1446,13 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     // 🔹 Lead ID search
     if (leadId) {
       filter.leadId = { $regex: leadId, $options: "i" };
+    }
+    if (req.query.program) {
+      if (Array.isArray(req.query.program)) {
+        filter.programId = { $in: req.query.program };
+      } else {
+        filter.programId = req.query.program;
+      }
     }
 
     if (isduplicate === "true") {
