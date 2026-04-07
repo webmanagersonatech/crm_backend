@@ -2036,7 +2036,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     const settings = await Settings.findOne({ instituteId: filter.instituteId });
 
     let courses = settings?.courses || [];
-
+    console.log(courses, "kk")
     if (user.departments && user.departments.length > 0) {
       courses = courses.filter((course: any) =>
         user.departments.includes(course.courseId)
@@ -2104,7 +2104,7 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
 
     if (req.query.program) {
       if (Array.isArray(req.query.program)) {
-        filter.programId = { $in: req.query.program }; 
+        filter.programId = { $in: req.query.program };
       } else {
         filter.programId = req.query.program;
       }
