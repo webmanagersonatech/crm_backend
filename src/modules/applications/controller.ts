@@ -2053,7 +2053,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       },
       data: applications.docs,
       academicYears,
-      courses,
+      courses: courses || [],
       filters: {
         personalDetails: personalDetailsKeyValues,
         educationDetails: educationDetailsKeyValues
