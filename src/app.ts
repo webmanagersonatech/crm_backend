@@ -31,7 +31,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+    origin: ['http://localhost:3000', 'http://127.0.0.1:5500', 'http://160.187.54.80:3000', 'https://www.sonabusinessschool.com', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
     credentials: true,
 }));
 declare module 'express-session' {
