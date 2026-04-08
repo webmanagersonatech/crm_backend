@@ -11,7 +11,7 @@ export const createLeadSchema = Joi.object({
     'string.empty': 'Phone number is required'
   }),
   email: Joi.string().email().optional().allow(''),
-  dateOfBirth: Joi.date().optional(),
+  dateOfBirth: Joi.date().optional().empty("").allow(null),
   country: Joi.string().optional(),
   state: Joi.string().optional(),
   city: Joi.string().optional(),
