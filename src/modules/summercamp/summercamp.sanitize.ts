@@ -28,7 +28,7 @@ const sportsItemSchema = Joi.object({
 ========================= */
 export const summerCampSchema = Joi.object({
   // User input
-  regno: Joi.string().trim().required(),
+  regno: Joi.string().trim().allow(""),
 
   name: Joi.string().trim().min(2).max(100).required(),
 
