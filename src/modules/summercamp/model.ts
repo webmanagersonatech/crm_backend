@@ -68,7 +68,7 @@ const SummerCampSchema = new Schema<ISummerCamp>(
   {
     regId: { type: String, unique: true, index: true }, // ✅ Auto ID
 
-    regno: { type: String, required: true, trim: true }, // ✅ User input
+    regno: { type: String,  trim: true }, // ✅ User input
 
     name: { type: String, required: true, trim: true },
     mobile_no: { type: String, required: true },
@@ -77,7 +77,7 @@ const SummerCampSchema = new Schema<ISummerCamp>(
     gender: { type: String },
     dob: { type: Date },
     age: { type: Number },
-    
+
     paymentStatus: {
       type: String,
       enum: ["paid", "unpaid"],
