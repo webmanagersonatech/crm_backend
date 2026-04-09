@@ -43,7 +43,7 @@ export const summerCampSchema = Joi.object({
     .email({ tlds: { allow: false } })
     .trim()
     .lowercase()
-    .required(),
+    .allow(""),
 
   gender: Joi.string()
     .valid("male", "female", "other")
