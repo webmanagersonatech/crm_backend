@@ -36,10 +36,12 @@ export const createSummerCamp = async (req: Request, res: Response) => {
 
     const camp = await SummerCamp.create(value);
 
+    
     res.status(201).json({
-      message: "Registration successful",
-      data: camp,
+      message: "Registration is successful",
+      regId: camp.regId,
     });
+
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
