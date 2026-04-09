@@ -23,6 +23,7 @@ import captchaRoutes from './modules/captcha/routes'
 import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import summerCampRoutes from './modules/summercamp/routes';
 
 dotenv.config();
 
@@ -31,7 +32,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://www.sonabusinessschool.com', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://www.sonabusinessschool.com','https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
     credentials: true,
 }));
 declare module 'express-session' {
@@ -74,6 +75,7 @@ app.use('/api/student', studentRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/dynamic-form-manage', dynamicformRoutes);
 app.use('/api/email-templates', emailtemplateRoutes);
+app.use('/api/summercamp', summerCampRoutes);
 app.use('/api/captcha', captchaRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
 
