@@ -12,6 +12,7 @@ import emailtemplates from '../email-templates/model';
 import fs from "fs";
 import csv from "csv-parser";
 import Institution from '../institutions/model'
+import Permission from '../permissions/model'
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -1892,6 +1893,26 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     if (!user) return res.status(401).json({ message: 'Not authorized' })
 
+
+   
+    if (user.role !== "superadmin") {
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const summerCampPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Application"
+      );
+
+      if (!summerCampPermission?.view) {
+        return res.status(403).json({
+          message: "You have no permission to view this data",
+        });
+      }
+    }
+
     let filter: any = {}
 
     if (user.role === 'superadmin') {
@@ -2036,7 +2057,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     const settings = await Settings.findOne({ instituteId: filter.instituteId });
 
     let courses = settings?.courses || [];
-  
+
     if (user.departments && user.departments.length > 0) {
       courses = courses.filter((course: any) =>
         user.departments.includes(course.courseId)

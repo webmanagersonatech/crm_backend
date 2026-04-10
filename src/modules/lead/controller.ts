@@ -9,6 +9,7 @@ import Settings from '../settings/model';
 import mongoose from "mongoose";
 import Student from '../students/model';
 import Other from '../others/model'
+import Permission from '../permissions/model';
 
 const upload = multer({
   dest: "uploads/",
@@ -831,7 +832,30 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
       isduplicate,
       leadSource,
     } = req.query;
+
     const user = req.user;
+
+    if (!user) return res.status(401).json({ message: 'Not authorized' })
+
+
+
+    if (user.role !== "superadmin") {
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const summerCampPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Lead Manager"
+      );
+
+      if (!summerCampPermission?.view) {
+        return res.status(403).json({
+          message: "You have no permission to view this data",
+        });
+      }
+    }
 
 
     let filter: any = {};

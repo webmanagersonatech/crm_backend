@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import SummerCamp from "./model";
 import { summerCampSchema } from "./summercamp.sanitize";
+import { AuthRequest } from "../auth";
+import Permission from "../permissions/model";
+import { permission } from "process";
 
 /* =========================
    CREATE REGISTRATION
@@ -40,7 +43,7 @@ export const createSummerCamp = async (req: Request, res: Response) => {
     const camp = await SummerCamp.create(value);
 
     res.status(201).json({
-      status: "success", // ✅ added
+      status: "success",
       message: "Registration is successful",
       regId: camp.regId,
     });
@@ -53,37 +56,77 @@ export const createSummerCamp = async (req: Request, res: Response) => {
 /* =========================
    LIST (PAGINATION + FILTER)
 ========================= */
-export const listSummerCamps = async (req: Request, res: Response) => {
+// In your summercamp API route file
+export const listSummerCamps = async (req: AuthRequest, res: Response) => {
   try {
     const {
       page = 1,
       limit = 10,
-      name,
-      regno,
-      mobile_no,
+      search, // Single search parameter
       sport,
       startDate,
       endDate,
+      paymentStatus,
+      registrar
     } = req.query;
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized - user not found",
+      });
+    }
+
+    if (user.role !== "superadmin") {
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const summerCampPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Summer Camp"
+      );
+
+      if (!summerCampPermission?.view) {
+        return res.status(403).json({
+          message: "You have no permission to view this data",
+        });
+      }
+    }
+
 
     let filter: any = {};
 
-    if (name) {
-      filter.name = { $regex: name, $options: "i" };
+    // Unified search across name, regno, mobile_no, regId
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { regno: { $regex: search, $options: "i" } },
+        { mobile_no: { $regex: search, $options: "i" } },
+        { regId: { $regex: search, $options: "i" } },
+      ];
     }
 
-    if (regno) {
-      filter.regno = { $regex: regno, $options: "i" };
-    }
-
-    if (mobile_no) {
-      filter.mobile_no = { $regex: mobile_no, $options: "i" };
-    }
-
+    // Multi-sport filter - support comma-separated values
     if (sport) {
-      filter["sportsData.sport_name"] = sport;
+      const sportValues = (sport as string).split(',');
+      if (sportValues.length === 1) {
+        filter["sportsData.sport_name"] = sportValues[0];
+      } else {
+        filter["sportsData.sport_name"] = { $in: sportValues };
+      }
     }
 
+    // Payment status filter
+    if (paymentStatus && paymentStatus !== 'all') {
+      filter.paymentStatus = paymentStatus;
+    }
+    // Registrar filter
+    if (registrar && registrar !== 'all') {
+      filter.registrar = registrar;
+    }
     // Date filter
     if (startDate || endDate) {
       const dateFilter: any = {};
@@ -103,18 +146,147 @@ export const listSummerCamps = async (req: Request, res: Response) => {
       filter.createdAt = dateFilter;
     }
 
+    // Get paginated results
     const result = await (SummerCamp as any).paginate(filter, {
       page: Number(page),
       limit: Number(limit),
       sort: { createdAt: -1 },
     });
 
-    res.json(result);
+    // Calculate statistics based on the SAME filter
+    const stats = await SummerCamp.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalRegistrations: { $sum: 1 },
+          totalPaid: {
+            $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, 1, 0] }
+          },
+          totalUnpaid: {
+            $sum: { $cond: [{ $eq: ["$paymentStatus", "unpaid"] }, 1, 0] }
+          },
+          totalRevenue: {
+            $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, "$totalAmt", 0] }
+          }
+        }
+      }
+    ]);
+
+    const statistics = stats[0] || {
+      totalRegistrations: 0,
+      totalPaid: 0,
+      totalUnpaid: 0,
+      totalRevenue: 0
+    };
+
+    res.json({
+      ...result,
+      statistics
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
 };
+export const exportSummerCamps = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      search,
+      sport,
+      startDate,
+      endDate,
+      paymentStatus,
+      registrar
+    } = req.query;
 
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized - user not found",
+      });
+    }
+
+    if (user.role !== "superadmin") {
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const summerCampPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Summer Camp"
+      );
+
+      if (!summerCampPermission?.filter) {
+        return res.status(403).json({
+          message: "You have no permission to export this data",
+        });
+      }
+    }
+
+    let filter: any = {};
+
+    // 🔍 Search
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { regno: { $regex: search, $options: "i" } },
+        { mobile_no: { $regex: search, $options: "i" } },
+        { regId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // 🏀 Sport filter
+    if (sport) {
+      const sportValues = (sport as string).split(",");
+      filter["sportsData.sport_name"] =
+        sportValues.length === 1
+          ? sportValues[0]
+          : { $in: sportValues };
+    }
+
+    // 💰 Payment
+    if (paymentStatus && paymentStatus !== "all") {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    // 👤 Registrar
+    if (registrar && registrar !== "all") {
+      filter.registrar = registrar;
+    }
+
+    // 📅 Date
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
+    // 🚀 NO PAGINATION (full data)
+    const data = await SummerCamp.find(filter).sort({ createdAt: -1 });
+
+    res.json({
+      total: data.length,
+      data
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
 /* =========================
    GET SINGLE
 ========================= */
@@ -160,6 +332,37 @@ export const updateSummerCamp = async (req: Request, res: Response) => {
 
     res.json({
       message: "Updated successfully",
+      data: updated,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { paymentStatus } = req.body;
+
+    // validation
+    if (!["paid", "unpaid"].includes(paymentStatus)) {
+      return res.status(400).json({
+        message: "Invalid payment status",
+      });
+    }
+
+    const updated = await SummerCamp.findByIdAndUpdate(
+      id,
+      { $set: { paymentStatus } },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    res.json({
+      message: "Payment status updated successfully",
       data: updated,
     });
   } catch (error: any) {

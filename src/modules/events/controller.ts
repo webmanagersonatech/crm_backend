@@ -10,6 +10,7 @@ import User from "../auth/auth.model";
 export const createEvent = async (req: AuthRequest, res: Response) => {
   try {
     const { name, mobile, email, location, eventName, enrolledDate, instituteId } = req.body;
+    
     const createdBy = req.user!.id;
     const instId = instituteId || req.user!.instituteId;
 
