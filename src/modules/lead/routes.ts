@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLead, listLeads, createThirdPartyLead, getLead, exportFollowups, updateLead, deleteLead, exportLeads, listOnlyFollowups, getduplicateLeads, createLeadfromonline, uploadMiddleware } from './controller';
+import { createLead, listLeads, createThirdPartyLead, getLead, exportFollowups,markAsNonDuplicate, updateLead, deleteLead, exportLeads, listOnlyFollowups, getduplicateLeads, createLeadfromonline, uploadMiddleware } from './controller';
 import { protect } from '../../middlewares/auth';
 import { thirdPartyAuth } from '../../middlewares/thirdpartyAuth';
 
@@ -10,6 +10,7 @@ router.get('/export', protect, exportLeads);
 // router.post('/update-program-ids', updateProgramIdsForOldLeads);
 router.get('/', protect, listLeads);
 router.get('/duplicates', protect, getduplicateLeads);
+router.patch('/:id/non-duplicate', protect, markAsNonDuplicate);
 router.get('/followupsreport', protect, listOnlyFollowups);
 router.get('/export-followups', protect, exportFollowups);
 router.post('/', protect, createLead);

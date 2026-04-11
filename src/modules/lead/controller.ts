@@ -1528,7 +1528,36 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+export const markAsNonDuplicate = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
 
+    const updatedLead = await Lead.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          isduplicate: false,
+          duplicateReason: "",
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedLead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    res.status(200).json({
+      message: "Lead marked as non-duplicate successfully",
+      data: updatedLead,
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      message: error.message || "Something went wrong",
+    });
+  }
+};
 
 export const getLead = async (req: Request, res: Response) => {
   try {
