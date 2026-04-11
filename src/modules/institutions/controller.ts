@@ -360,6 +360,11 @@ export const getActiveInstitutionsbystudent = async (
 export const getActiveData = async (req: AuthRequest, res: Response) => {
   try {
     const role = req.user?.role?.toLowerCase();
+
+    const currentuser = await User.findById(req.user.id);
+
+    const isTempAdmin = currentuser?.tempAdminAccess === true;
+
     const instituteId = req.query.instituteId as string | undefined;
 
     let usersFilter: any = { status: "active" };
@@ -384,7 +389,16 @@ export const getActiveData = async (req: AuthRequest, res: Response) => {
         usersFilter.instituteId = instituteId;
       }
     }
-    if (role === "admin") {
+    if (role === "admin" && !isTempAdmin) {
+      usersFilter.instituteId = req.user.instituteId;
+
+      usersFilter.$or = [
+        { role: { $ne: "admin" } },
+        { role: "admin", tempAdminAccess: true }
+      ];
+    }
+
+    if (role === "admin" && isTempAdmin) {
       // Admin: only users from their institute, excluding admins
       usersFilter.instituteId = req.user.instituteId;
       usersFilter.role = { $ne: "admin" };
