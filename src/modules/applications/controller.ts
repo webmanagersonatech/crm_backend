@@ -628,6 +628,19 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // ✅ FLEXIBLE OVERALL CUTOFF EXTRACTION
+    let overallCutoff: number | null = null;
+
+    for (const section of educationDetails) {
+      for (const key in section.fields) {
+        if (key.toLowerCase().includes("overall cutoff")) {
+          overallCutoff = Number(section.fields[key]);
+          break;
+        }
+      }
+      if (overallCutoff !== null) break;
+    }
+
     // 🔍 BUILD SEARCH TEXT (AUTO)
     const searchText = buildSearchTextFromSections(
       personalDetails,
@@ -700,6 +713,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       academicYear,
       interactions: leadStatus,
       country,
+      overallCutoff,
       state,
       city,
       mobileNo,
@@ -760,6 +774,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       paymentStatus: "Unpaid",
       status: "Pending",
       searchText,
+      overallCutoff
     });
 
     // Link student and lead
@@ -985,6 +1000,20 @@ export const createApplicationByStudent = async (
         ? JSON.parse(req.body.educationDetails)
         : req.body.educationDetails || [];
 
+
+
+    let overallCutoff: number | null = null;
+
+    outer: for (const section of educationDetails) {
+      for (const key in section.fields) {
+        if (key.toLowerCase().includes("overall cutoff")) {
+          const value = Number(section.fields[key]);
+          overallCutoff = isNaN(value) ? null : value;
+          break outer;
+        }
+      }
+    }
+
     const instituteId = req.body.instituteId || req.student?.instituteId;
     const programId = req.body.programId;
     let program = "";
@@ -1127,7 +1156,10 @@ export const createApplicationByStudent = async (
     }
 
 
+
+
     let application;
+
     const searchText = buildSearchTextFromSections(
       personalDetails,
       educationDetails
@@ -1138,7 +1170,7 @@ export const createApplicationByStudent = async (
     const hasEducation =
       Array.isArray(formConfig?.educationDetails) &&
       formConfig.educationDetails.length > 0;
-    console.log(hasEducation, "hasEducation")
+
 
     if (student.applicationId) {
 
@@ -1187,6 +1219,7 @@ export const createApplicationByStudent = async (
           paymentStatus: "Unpaid",
           status: "Pending",
           formStatus,
+          overallCutoff,
         },
         { new: true }
 
@@ -1201,6 +1234,7 @@ export const createApplicationByStudent = async (
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
+      student.overallCutoff = overallCutoff ?? undefined;
       if (studentImage) {
         student.studentImage = studentImage;
       }
@@ -1226,7 +1260,8 @@ export const createApplicationByStudent = async (
         studentId: student.studentId,
         paymentStatus: "Unpaid",
         status: "Pending",
-        formStatus
+        formStatus,
+        overallCutoff
       });
 
       // Link student to this new application
@@ -1240,6 +1275,7 @@ export const createApplicationByStudent = async (
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
+      student.overallCutoff = overallCutoff ?? undefined;
       student.academicYear = academicYear;
       if (studentImage) {
         student.studentImage = studentImage;
@@ -1442,27 +1478,13 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     const user = req.user
     if (!user)
       return res.status(401).json({ success: false, message: "Not authorized" })
-
     const { id } = req.params
-
-
     const application = await Application.findById(id)
-
     if (!application) {
       return res
         .status(404)
         .json({ success: false, message: "Application not found" })
     }
-
-    // 🔐 Optional role restriction
-    // if (
-    //   user.role !== "superadmin" &&
-    //   user.role !== "admin" &&
-    //   (!application.userId || application.userId.toString() !== user.id)
-    // ) {
-    //   return res.status(403).json({ success: false, message: "Access denied" })
-    // }
-
 
     const instituteId = req.body.instituteId || application.instituteId
     const programId = req.body.programId || application.programId;
@@ -1556,6 +1578,8 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         .join(" ")
         .trim();
 
+
+
     if (!email || !firstname || !mobileNo)
       return res
         .status(400)
@@ -1586,6 +1610,20 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
         });
       }
     }
+
+    let overallCutoff: number | null = null;
+
+    outer: for (const section of educationDetails) {
+      for (const key in section.fields) {
+        if (key.toLowerCase().includes("overall cutoff")) {
+          const value = Number(section.fields[key]);
+          overallCutoff = isNaN(value) ? null : value;
+          break outer;
+        }
+      }
+    }
+
+
     const personalSection = personalDetails.find(
       (s: any) => s.sectionName === "Personal Details"
     );
@@ -1675,6 +1713,8 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.applicantName = applicantName || application.applicantName
     application.searchText = searchText
     application.formStatus = formStatus
+    application.overallCutoff =
+      overallCutoff ?? application.overallCutoff;
     await application.save()
 
     const studentUpdateData: any = {
@@ -1692,7 +1732,9 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       siblingsCount,
       siblingsDetails,
     };
-
+    if (overallCutoff !== null) {
+      studentUpdateData.overallCutoff = overallCutoff;
+    }
     // ✅ Add studentImage only if provided
     if (studentImage) {
       studentUpdateData.studentImage = studentImage;
@@ -1719,99 +1761,6 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
   }
 }
 
-// export const updateProgramIdsForOldApplications = async (req: Request, res: Response) => {
-//   const { instituteId } = req.body;
-
-//   if (!instituteId) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "instituteId is required"
-//     });
-//   }
-
-//   try {
-//     // ✅ Get settings
-//     const settings = await Settings.findOne({ instituteId });
-
-//     if (!settings || !settings.courses) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Settings not found"
-//       });
-//     }
-
-//     // ✅ Create mapping
-//     const courseMapping: Record<string, string> = {};
-//     settings.courses.forEach((course: any) => {
-//       courseMapping[course.name] = course.courseId;
-//     });
-
-//     // ✅ Find old applications without programId
-//     const applications = await Application.find({
-//       instituteId,
-//       program: { $exists: true, $ne: "" },
-//       $or: [
-//         { programId: { $exists: false } },
-//         { programId: null },
-//         { programId: "" }
-//       ]
-//     });
-
-//     let updatedCount = 0;
-//     let notFoundCount = 0;
-//     const notMatched: any[] = [];
-
-//     for (const app of applications) {
-//       const programName = app.program;
-
-//       if (programName && typeof programName === "string") {
-//         const courseId = courseMapping[programName];
-
-//         if (courseId) {
-//           await Application.updateOne(
-//             { _id: app._id },
-//             { $set: { programId: courseId } }
-//           );
-
-//           // ✅ also update Student table (important in your flow)
-//           await Student.updateOne(
-//             { studentId: app.studentId },
-//             { $set: { programId: courseId } }
-//           );
-
-//           updatedCount++;
-//         } else {
-//           notFoundCount++;
-//           notMatched.push({
-//             applicationId: app._id,
-//             program: programName,
-//             applicantName: app.applicantName
-//           });
-//         }
-//       }
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       message: `Updated ${updatedCount} applications`,
-//       stats: {
-//         total: applications.length,
-//         updated: updatedCount,
-//         notMatched: notFoundCount
-//       },
-//       notMatched
-//     });
-
-//   } catch (error: any) {
-//     console.error(error);
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message
-//     });
-//   }
-// };
-
-// 🔍 Get Single Application
 
 export const getApplication = async (req: Request, res: Response) => {
   try {
@@ -1894,7 +1843,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     if (!user) return res.status(401).json({ message: 'Not authorized' })
 
 
-   
+
     if (user.role !== "superadmin") {
 
       const permissionDoc = await Permission.findOne({
@@ -1939,6 +1888,21 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     if (req.query.applicationId) {
       filter.applicationId = { $regex: req.query.applicationId, $options: "i" };
+    }
+
+    // 🎯 Overall Cutoff Range Filter
+    if (req.query.startCutoff || req.query.endCutoff) {
+      const cutoffFilter: any = {};
+
+      if (req.query.startCutoff) {
+        cutoffFilter.$gte = Number(req.query.startCutoff);
+      }
+
+      if (req.query.endCutoff) {
+        cutoffFilter.$lte = Number(req.query.endCutoff);
+      }
+
+      filter.overallCutoff = cutoffFilter;
     }
 
     if (req.query.applicantName) {
@@ -2140,6 +2104,21 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
         filter.city = req.query.city;
       }
     }
+    // 🎯 Overall Cutoff Range Filter
+    if (req.query.startCutoff || req.query.endCutoff) {
+      const cutoffFilter: any = {};
+
+      if (req.query.startCutoff) {
+        cutoffFilter.$gte = Number(req.query.startCutoff);
+      }
+
+      if (req.query.endCutoff) {
+        cutoffFilter.$lte = Number(req.query.endCutoff);
+      }
+
+      filter.overallCutoff = cutoffFilter;
+    }
+
 
     if (req.query.applicationSource) filter.applicationSource = req.query.applicationSource;
     if (req.query.interactions) filter.interactions = req.query.interactions;

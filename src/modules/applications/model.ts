@@ -19,6 +19,7 @@ export interface IApplication extends Document {
   city?: string;
   userId?: string;
   leadId?: string;
+  overallCutoff?: number;
   academicYear: string;
   personalDetails: Array<{ sectionName: string; fields: Record<string, any> }>;
   educationDetails: Array<{ sectionName: string; fields: Record<string, any> }>;
@@ -83,7 +84,14 @@ const ApplicationSchema = new Schema<IApplication>(
       enum: ["Incomplete", "Complete"],
       default: "Complete", // still safe
 
+
     },
+
+    overallCutoff: {
+      type: Number,
+      index: true,
+    },
+
     searchText: {
       type: String,
       default: "",

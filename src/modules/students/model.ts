@@ -10,11 +10,12 @@ export interface IStudent extends Document {
   lastname: string;
   email: string;
   country?: string;
-  programId?:string;
+  programId?: string;
   applicationId?: string;
   username: string;
   password: string;
   mobileNo: string;
+  overallCutoff?: number;
   instituteId: string;
   state: string;
   city: string;
@@ -75,6 +76,10 @@ const StudentSchema = new Schema<IStudent>(
     hostelWilling: { type: Boolean, default: false },
     hostelReason: { type: String },
     bloodGroup: { type: String },
+    overallCutoff: {
+      type: Number,
+      index: true,
+    },
     bloodWilling: { type: Boolean, default: false },
     studentImage: { type: String },
     familyOccupation: { type: String },

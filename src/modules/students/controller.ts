@@ -431,7 +431,8 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     // Pagination
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
+    const startCutoff = req.query.startCutoff as string;
+    const endCutoff = req.query.endCutoff as string;
     // Search
     const search = (req.query.search as string) || "";
 
@@ -498,6 +499,22 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
     if (academicYear !== "all") query.academicYear = academicYear;
 
+
+    // ✅ Safe Cutoff Filter
+    if (startCutoff || endCutoff) {
+      const min = startCutoff ? Number(startCutoff) : null;
+      const max = endCutoff ? Number(endCutoff) : null;
+
+      query.overallCutoff = {};
+
+      if (min !== null && !isNaN(min)) {
+        query.overallCutoff.$gte = min;
+      }
+
+      if (max !== null && !isNaN(max)) {
+        query.overallCutoff.$lte = max;
+      }
+    }
     // Location filters
     if (country !== "all") query.country = country;
     if (state !== "all") query.state = state;
@@ -543,7 +560,8 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
   try {
     // Search
     const search = (req.query.search as string) || "";
-
+    const startCutoff = req.query.startCutoff as string;
+    const endCutoff = req.query.endCutoff as string;
     // Status filter
     const status = (req.query.status as string) || "all";
 
@@ -615,6 +633,22 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
         query.city = { $in: city };
       } else {
         query.city = city;
+      }
+    }
+
+    // ✅ Safe Cutoff Filter
+    if (startCutoff || endCutoff) {
+      const min = startCutoff ? Number(startCutoff) : null;
+      const max = endCutoff ? Number(endCutoff) : null;
+
+      query.overallCutoff = {};
+
+      if (min !== null && !isNaN(min)) {
+        query.overallCutoff.$gte = min;
+      }
+
+      if (max !== null && !isNaN(max)) {
+        query.overallCutoff.$lte = max;
       }
     }
 
