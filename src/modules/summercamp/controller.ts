@@ -20,27 +20,27 @@ export const createSummerCamp = async (req: Request, res: Response) => {
     }
 
     // Optional: prevent duplicate regno
-    if (value.regno && value.regno.trim() !== "") {
-      const existing = await SummerCamp.findOne({ regno: value.regno });
+    // if (value.regno && value.regno.trim() !== "") {
+    //   const existing = await SummerCamp.findOne({ regno: value.regno });
 
-      if (existing) {
-        return res.status(400).json({
-          status: "error",
-          message: "Registration number already exists",
-        });
-      }
-    }
+    //   if (existing) {
+    //     return res.status(400).json({
+    //       status: "error",
+    //       message: "Registration number already exists",
+    //     });
+    //   }
+    // }
 
-    const existingMobile = await SummerCamp.findOne({
-      mobile_no: value.mobile_no,
-    });
+    // const existingMobile = await SummerCamp.findOne({
+    //   mobile_no: value.mobile_no,
+    // });
 
-    if (existingMobile) {
-      return res.status(400).json({
-        status: "error",
-        message: "Mobile number already registered",
-      });
-    }
+    // if (existingMobile) {
+    //   return res.status(400).json({
+    //     status: "error",
+    //     message: "Mobile number already registered",
+    //   });
+    // }
 
     const camp = await SummerCamp.create(value);
 
