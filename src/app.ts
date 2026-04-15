@@ -19,6 +19,7 @@ import dynamicformRoutes from './modules/dynamic-form-manage/routes';
 import eventsRoutes from './modules/events/routes'
 import othersRoutes from './modules/others/routes'
 import paymentRoutes from './modules/payment/routes'
+import ciicpRoutes from './modules/ciicp/routes'
 import captchaRoutes from './modules/captcha/routes'
 import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
@@ -76,6 +77,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/dynamic-form-manage', dynamicformRoutes);
 app.use('/api/email-templates', emailtemplateRoutes);
 app.use('/api/summercamp', summerCampRoutes);
+app.use('/api/ciicp', ciicpRoutes);
 app.use('/api/captcha', captchaRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
 
