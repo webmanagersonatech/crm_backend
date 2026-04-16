@@ -14,6 +14,8 @@ export interface ICIICP extends Document {
   gender: "Male" | "Female" | "Other";
   dob: Date;
 
+  paymentStatus: "paid" | "unpaid";
+
   address: string;
   district: string;
 
@@ -56,6 +58,12 @@ const CIICPSchema = new Schema<ICIICP>(
       type: String,
       enum: ["Male", "Female", "Other"],
       required: true,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["paid", "unpaid"],
+      default: "unpaid",
     },
 
     dob: {
@@ -158,7 +166,7 @@ CIICPSchema.plugin(mongoosePaginate);
    Pagination Type
 ========================= */
 export interface CIICPModel<T extends Document>
-  extends mongoose.PaginateModel<T> {}
+  extends mongoose.PaginateModel<T> { }
 
 /* =========================
    Export Model

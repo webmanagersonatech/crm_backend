@@ -50,10 +50,22 @@ export const createCIICP = async (req: Request, res: Response) => {
 ========================= */
 export const listCIICP = async (req: AuthRequest, res: Response) => {
   try {
-    const { page = 1, limit = 10, search, batch, district } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      batch,
+      district,
+      startDate,
+      endDate,
+      course,
+      paymentStatus,
+      gender,
+    } = req.query;
 
     const user = req.user;
 
+    // 🔐 Auth check
     if (!user) {
       return res.status(401).json({
         message: "Unauthorized",
@@ -78,6 +90,7 @@ export const listCIICP = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // 🧠 Build filter
     let filter: any = {};
 
     // 🔍 Search
@@ -91,6 +104,25 @@ export const listCIICP = async (req: AuthRequest, res: Response) => {
       ];
     }
 
+    // 📅 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
     // 🎓 Batch filter
     if (batch && batch !== "all") {
       filter.batch = batch;
@@ -101,32 +133,94 @@ export const listCIICP = async (req: AuthRequest, res: Response) => {
       filter.district = district;
     }
 
+    // 💰 Payment Status filter
+    if (paymentStatus && paymentStatus !== "all") {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    // 👤 Gender filter
+    if (gender && gender !== "all") {
+      filter.gender = gender;
+    }
+
+    // 📘 Course filter (OR logic - matches if student has ANY of the selected courses)
+    if (course && course !== "all") {
+      let courseArray: string[] = [];
+
+      if (typeof course === 'string') {
+        courseArray = course.split(',');
+      } else if (Array.isArray(course)) {
+        courseArray = course.map(c => String(c));
+      } else if (course) {
+        courseArray = [String(course)];
+      }
+
+      if (courseArray.length > 0) {
+        filter.courses = { $in: courseArray }; // OR logic
+      }
+    }
+
+    // 📄 Pagination
     const result = await (CIICP as any).paginate(filter, {
       page: Number(page),
       limit: Number(limit),
       sort: { createdAt: -1 },
     });
 
-    // 📊 Simple stats
-    const total = await CIICP.countDocuments(filter);
+    // 📊 Courses grouping (based on filtered data)
+    const courseStats = await CIICP.aggregate([
+      { $match: filter },
+      { $unwind: "$courses" },
+      {
+        $group: {
+          _id: "$courses",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          course: "$_id",
+          count: 1,
+        },
+      },
+      { $sort: { count: -1 } },
+    ]);
 
+    // 📍 Get distinct districts for filter dropdown (from ALL records)
+    const distinctDistricts = await CIICP.distinct("district");
+    const validDistricts = distinctDistricts.filter(d => d && d !== "");
+
+    // 📚 Get distinct courses for filter dropdown (from ALL records)
+    const distinctCourses = await CIICP.distinct("courses");
+    const flattenedCourses = [...new Set(distinctCourses.flat())];
+    const validCourses = flattenedCourses.filter(c => c && c !== "");
+
+    // ✅ Final response
     res.json({
       ...result,
-      statistics: {
-        totalRegistrations: total,
-      },
+      courses: courseStats,
+      courseOptions: validCourses,
+      districtOptions: validDistricts,
     });
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
-
-/* =========================
-   EXPORT (NO PAGINATION)
-========================= */
 export const exportCIICP = async (req: AuthRequest, res: Response) => {
   try {
-    const { search, batch, district } = req.query;
+    const {
+      search,
+      batch,
+      district,
+      startDate,
+      endDate,
+      course,
+      paymentStatus,
+      gender,
+    } = req.query;
 
     const user = req.user;
 
@@ -156,6 +250,7 @@ export const exportCIICP = async (req: AuthRequest, res: Response) => {
 
     let filter: any = {};
 
+    // 🔍 Search
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -166,12 +261,60 @@ export const exportCIICP = async (req: AuthRequest, res: Response) => {
       ];
     }
 
+    // 📅 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
+    // 🎓 Batch filter
     if (batch && batch !== "all") {
       filter.batch = batch;
     }
 
+    // 📍 District filter
     if (district && district !== "all") {
       filter.district = district;
+    }
+
+    // 💰 Payment Status filter
+    if (paymentStatus && paymentStatus !== "all") {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    // 👤 Gender filter
+    if (gender && gender !== "all") {
+      filter.gender = gender;
+    }
+
+    // 📘 Course filter (OR logic - matches if student has ANY of the selected courses)
+    if (course && course !== "all") {
+      let courseArray: string[] = [];
+
+      if (typeof course === 'string') {
+        courseArray = course.split(',');
+      } else if (Array.isArray(course)) {
+        courseArray = course.map(c => String(c));
+      } else if (course) {
+        courseArray = [String(course)];
+      }
+
+      if (courseArray.length > 0) {
+        filter.courses = { $in: courseArray }; // OR logic
+      }
     }
 
     const data = await CIICP.find(filter).sort({ createdAt: -1 });
@@ -184,6 +327,37 @@ export const exportCIICP = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const updatedData = await CIICP.findByIdAndUpdate(
+      id,
+      { paymentStatus: "paid" },
+      { new: true } // return updated document
+    );
+
+    if (!updatedData) {
+      return res.status(404).json({
+        message: "Record not found",
+      });
+    }
+
+    res.json({
+      message: "Payment updated successfully",
+      data: updatedData,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+/* =========================
+   EXPORT (NO PAGINATION)
+========================= */
+
 
 /* =========================
    GET SINGLE

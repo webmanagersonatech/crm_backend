@@ -6,6 +6,7 @@ import {
   updateCIICP,
   exportCIICP,
   deleteCIICP,
+  updatePaymentStatus,
 } from "./controller";
 import { protect } from "../../middlewares/auth";
 
@@ -20,6 +21,7 @@ router.get("/", protect, listCIICP);
 
 router.get("/export", protect, exportCIICP);
 
+router.patch("/:id/payment", protect, updatePaymentStatus);
 
 router.post("/", createCIICP);
 
