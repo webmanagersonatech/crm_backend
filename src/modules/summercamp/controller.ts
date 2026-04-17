@@ -3,8 +3,42 @@ import SummerCamp from "./model";
 import { summerCampSchema } from "./summercamp.sanitize";
 import { AuthRequest } from "../auth";
 import Permission from "../permissions/model";
-import { permission } from "process";
+import axios from "axios";
 
+
+export const sendCampSMS = async (
+  mobile: string,
+  name: string,
+  regId: string
+) => {
+  try {
+    // Clean mobile
+    const formattedMobile = mobile.startsWith("91")
+      ? mobile
+      : "91" + mobile.replace(/\D/g, "");
+
+    // Your approved template message
+    const message = `Hello ${name}, Your Sona Summer Camp Register ID is: ${regId}. Please bring this ID with you when coming to the camp. It is required for entry.`;
+
+    const url = "http://promo.smso2.com/api/sendhttp.php";
+
+    const response = await axios.get(url, {
+      params: {
+        authkey: "35386c6c65676537353621",
+        mobiles: formattedMobile,
+        message: message,
+        sender: "SONACT",
+        route: "2",
+        country: "91",
+        DLT_TE_ID: "1107177634604023642", 
+      },
+    });
+
+    console.log("SMS Sent:", response.data);
+  } catch (error: any) {
+    console.error("SMS Error:", error.response?.data || error.message);
+  }
+};
 /* =========================
    CREATE REGISTRATION
 ========================= */
@@ -43,6 +77,8 @@ export const createSummerCamp = async (req: Request, res: Response) => {
     // }
 
     const camp = await SummerCamp.create(value);
+
+    sendCampSMS(camp.mobile_no, camp.name, camp.regId);
 
     res.status(201).json({
       status: "success",
