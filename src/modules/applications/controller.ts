@@ -29,21 +29,54 @@ const mapSiblingStatus = (value: string) => {
 
 const buildSearchTextFromSections = (
   personalDetails: any[],
-  educationDetails: any[]
+  educationDetails: any[],
+  options?: {
+    excludeFields?: string[];
+    maxFieldLength?: number;
+  }
 ): string => {
   const tokens: string[] = [];
+
+  const defaultExcludeFields = [
+    'signature', 'father sign', 'mother sign', 'student signature',
+    'student image', 'profile image', 'profile picture', 'photo',
+    'image', 'picture', 'upload', 'document', 'attachment'
+  ];
+
+  const excludeFields = options?.excludeFields || defaultExcludeFields;
+  const maxFieldLength = options?.maxFieldLength || 500;
+
+  const shouldExcludeField = (key: string): boolean => {
+    const lowerKey = key.toLowerCase();
+    return excludeFields.some(exclude => lowerKey.includes(exclude.toLowerCase()));
+  };
+
+  const isBase64Image = (value: any): boolean => {
+    if (typeof value !== 'string') return false;
+
+    // Data URL check
+    if (value.startsWith('data:image/')) return true;
+
+    // Base64 pattern check for image-like data
+    if (value.length > maxFieldLength &&
+      /^[A-Za-z0-9+/=]+$/.test(value.substring(0, 100))) {
+      return true;
+    }
+
+    return false;
+  };
 
   const addField = (label: string, value: any) => {
     if (value === null || value === undefined) return;
 
     if (Array.isArray(value)) {
-      // Include even if empty array
       tokens.push(`${label}:${value.map(v => String(v).toLowerCase().trim()).join(",")}`);
     } else if (value !== "") {
-      // Include non-empty strings and numbers
+      if (isBase64Image(value)) return;
+      if (typeof value === 'string' && value.length > maxFieldLength) return;
+
       tokens.push(`${label}:${String(value).toLowerCase().trim()}`);
     } else {
-      // For empty string, still include with empty value
       tokens.push(`${label}:`);
     }
   };
@@ -51,7 +84,8 @@ const buildSearchTextFromSections = (
   const processSections = (sections: any[]) => {
     sections.forEach((section) => {
       Object.entries(section.fields || {}).forEach(([key, value]) => {
-        // Convert key to lowercase and remove spaces
+        if (shouldExcludeField(key)) return;
+
         const label = key.replace(/\s+/g, "").toLowerCase();
         addField(label, value);
       });
@@ -1314,6 +1348,7 @@ export const getApplicationByStudent = async (req: StudentAuthRequest, res: Resp
       studentId: student.studentId,
     })
 
+
     if (!application) {
       return res.status(404).json({ success: false, message: "Application not found" });
     }
@@ -1362,31 +1397,32 @@ export const getApplicationByStudents = async (
     const application = await Application.findOne({
       applicationId: student.applicationId,
       studentId: student.studentId,
-    });
+    })
+    .select('-personalDetails -educationDetails');
 
-    // 🟡 ApplicationId exists but record missing
-    if (!application) {
-      return res.status(200).json({
-        success: true,
-        warning: true,
-        message: "Application record not found. Please create a new one.",
-        data: null,
-      });
-    }
+// 🟡 ApplicationId exists but record missing
+if (!application) {
+  return res.status(200).json({
+    success: true,
+    warning: true,
+    message: "Application record not found. Please create a new one.",
+    data: null,
+  });
+}
 
-    // ✅ Application found
-    return res.status(200).json({
-      success: true,
-      warning: false,
-      data: application,
-    });
+// ✅ Application found
+return res.status(200).json({
+  success: true,
+  warning: false,
+  data: application,
+});
   } catch (error: any) {
-    console.error("Error fetching application by student:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
+  console.error("Error fetching application by student:", error);
+  return res.status(500).json({
+    success: false,
+    message: "Internal server error",
+  });
+}
 };
 
 export const listpendingApplications = async (req: AuthRequest, res: Response) => {
@@ -1980,6 +2016,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       page,
       limit,
       sort: { createdAt: -1 },
+      select: '-personalDetails -educationDetails',
       populate: [
         { path: 'institute', select: 'name ' },
         {
@@ -2168,6 +2205,7 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
 
 
     const applications = await Application.find(filter)
+      .select('-personalDetails -educationDetails')
       .sort({ createdAt: -1 })
       .populate([
         { path: 'institute', select: 'name' },
