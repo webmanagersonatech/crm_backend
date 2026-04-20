@@ -620,6 +620,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     const mobileNo = flattenedPersonalFields["Contact Number"];
     const studentImage = flattenedPersonalFields["Student Image"] ||
       flattenedPersonalFields["studentImage"] ||
+      flattenedPersonalFields["Student Photo"] ||
       flattenedPersonalFields["profileImage"] ||
       flattenedPersonalFields["Profile Image"];
     const firstname =
@@ -1117,7 +1118,9 @@ export const createApplicationByStudent = async (
     const { country, state, city } = extractAddress(personalDetails);
     const email = flattenedPersonalFields["Email Address"];
     const mobileNo = flattenedPersonalFields["Contact Number"];
-    const studentImage = flattenedPersonalFields["Student Image"];
+    const studentImage =
+      flattenedPersonalFields["Student Image"] ||
+      flattenedPersonalFields["Student Photo"];
     const firstname =
       flattenedPersonalFields["Full Name"] ||
       [
@@ -1398,31 +1401,31 @@ export const getApplicationByStudents = async (
       applicationId: student.applicationId,
       studentId: student.studentId,
     })
-    .select('-personalDetails -educationDetails');
+      .select('-personalDetails -educationDetails');
 
-// 🟡 ApplicationId exists but record missing
-if (!application) {
-  return res.status(200).json({
-    success: true,
-    warning: true,
-    message: "Application record not found. Please create a new one.",
-    data: null,
-  });
-}
+    // 🟡 ApplicationId exists but record missing
+    if (!application) {
+      return res.status(200).json({
+        success: true,
+        warning: true,
+        message: "Application record not found. Please create a new one.",
+        data: null,
+      });
+    }
 
-// ✅ Application found
-return res.status(200).json({
-  success: true,
-  warning: false,
-  data: application,
-});
+    // ✅ Application found
+    return res.status(200).json({
+      success: true,
+      warning: false,
+      data: application,
+    });
   } catch (error: any) {
-  console.error("Error fetching application by student:", error);
-  return res.status(500).json({
-    success: false,
-    message: "Internal server error",
-  });
-}
+    console.error("Error fetching application by student:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
 };
 
 export const listpendingApplications = async (req: AuthRequest, res: Response) => {
@@ -1602,6 +1605,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     const mobileNo = flattenedPersonalFields["Contact Number"];
     const studentImage = flattenedPersonalFields["Student Image"] ||
       flattenedPersonalFields["studentImage"] ||
+      flattenedPersonalFields["Student Photo"]
       flattenedPersonalFields["profileImage"] ||
       flattenedPersonalFields["Profile Image"];
     const firstname =
