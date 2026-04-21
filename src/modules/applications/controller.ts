@@ -663,12 +663,12 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // ✅ FLEXIBLE OVERALL CUTOFF EXTRACTION
+    // ✅ FLEXIBLE cutoff EXTRACTION
     let overallCutoff: number | null = null;
 
     for (const section of educationDetails) {
       for (const key in section.fields) {
-        if (key.toLowerCase().includes("overall cutoff")) {
+        if (key.toLowerCase().includes("cutoff")) {
           overallCutoff = Number(section.fields[key]);
           break;
         }
@@ -1041,7 +1041,7 @@ export const createApplicationByStudent = async (
 
     outer: for (const section of educationDetails) {
       for (const key in section.fields) {
-        if (key.toLowerCase().includes("overall cutoff")) {
+        if (key.toLowerCase().includes("cutoff")) {
           const value = Number(section.fields[key]);
           overallCutoff = isNaN(value) ? null : value;
           break outer;
@@ -1655,7 +1655,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
 
     outer: for (const section of educationDetails) {
       for (const key in section.fields) {
-        if (key.toLowerCase().includes("overall cutoff")) {
+        if (key.toLowerCase().includes("cutoff")) {
           const value = Number(section.fields[key]);
           overallCutoff = isNaN(value) ? null : value;
           break outer;
@@ -1930,7 +1930,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       filter.applicationId = { $regex: req.query.applicationId, $options: "i" };
     }
 
-    // 🎯 Overall Cutoff Range Filter
+    // 🎯 cutoff Range Filter
     if (req.query.startCutoff || req.query.endCutoff) {
       const cutoffFilter: any = {};
 
@@ -2145,7 +2145,7 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
         filter.city = req.query.city;
       }
     }
-    // 🎯 Overall Cutoff Range Filter
+    // 🎯 cutoff Range Filter
     if (req.query.startCutoff || req.query.endCutoff) {
       const cutoffFilter: any = {};
 
