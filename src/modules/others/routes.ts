@@ -24,7 +24,7 @@ router.get('/export', protect, exportOthers);
 router.post('/', protect, createOther);
 router.get('/:id', protect, getOther);
 // Create Lead from Other
-router.post('/create-lead/:recordId', protect, createLeadFromOther);
+router.post('/create-lead', protect, createLeadFromOther);
 
 router.put('/:id', protect, updateOther);
 router.delete('/:id', protect, deleteOther);

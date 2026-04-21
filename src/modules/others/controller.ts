@@ -5,6 +5,7 @@ import lead from '../lead/model'
 import { AuthRequest } from '../../middlewares/auth';
 import XLSX from 'xlsx';
 import User from '../auth/auth.model';
+import Settings from '../settings/model';
 
 const getFieldValue = (extraFields: any, keys: string[]) => {
   if (!extraFields) return undefined;
@@ -485,25 +486,48 @@ export const importOthers = async (req: AuthRequest, res: Response) => {
 // 🔹 Create Lead from Other by recordId
 export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
   try {
-    const { recordId } = req.params;
+    const {
+      recordId,
+      instituteId,
+      programId,
+      counsellorName,
+      candidateName,
+      ugDegree,
+      phoneNumber,
+      dateOfBirth,
+      country,
+      state,
+      city,
+      status,
+      communication,
+      followUpDate,
+      description,
+      email,
+    } = req.body;
+
     const createdBy = req.user!.id;
 
-    const other = await Other.findOne({ recordId }).lean();
-    console.log(other, "other")
+    if (!recordId) {
+      return res.status(400).json({ message: "recordId is required" });
+    }
+
+    const other = await Other.findOne({ recordId });
+
     if (!other) {
       return res.status(404).json({ message: "Other record not found" });
     }
 
-    // ❌ Prevent duplicate creation
+    // ❌ Prevent duplicate conversion
     if (other.leadId) {
       return res.status(400).json({
         message: "Lead already created from this record",
       });
     }
 
+    // ❌ Prevent duplicate lead
     const existingLead = await lead.findOne({
-      phoneNumber: other.phone,
-      instituteId: other.instituteId,
+      phoneNumber,
+      instituteId,
     });
 
     if (existingLead) {
@@ -512,57 +536,67 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const email = getFieldValue(other.extraFields, [
-      "email",
-      "emailid",
-      "mail",
-      "emailaddress",
-    ]);
+    // ✅ GET PROGRAM NAME FROM SETTINGS
+    let programName = "";
 
-    const city = getFieldValue(other.extraFields, ["city", "town"]);
-    const state = getFieldValue(other.extraFields, ["state", "province"]);
-    const country = getFieldValue(other.extraFields, ["country"]);
-    const dob = getFieldValue(other.extraFields, [
-      "dob",
-      "dateofbirth",
-      "birthdate",
-    ]);
+    if (programId) {
+      const settings = await Settings.findOne({ instituteId });
+
+      const selectedCourse = settings?.courses?.find(
+        (course: any) => course.courseId === programId
+      );
+
+      if (!selectedCourse) {
+        return res.status(400).json({ message: "Invalid programId" });
+      }
+
+      programName = selectedCourse.name;
+    }
 
     const user = await User.findById(createdBy).lean();
+
     const calltaken =
       `${user?.firstname ?? ""} ${user?.lastname ?? ""}`.trim() || "System";
 
-    const followUpDate = new Date();
+    const finalFollowUpDate = followUpDate
+      ? new Date(followUpDate)
+      : new Date();
 
     const firstFollowUp = {
-      status: "New",
+      status: status || "New",
       calltaken,
-      communication: "Phone",
-      followUpDate,
-      description: `Lead generated from Others module. Source: ${other.dataSource}.`,
-
+      communication: communication || "Phone",
+      followUpDate: finalFollowUpDate,
+      description:
+        description ||
+        `Lead generated from Others module. Source: ${other.dataSource}`,
     };
 
+    // ✅ CREATE LEAD
     const newLead = await lead.create({
-      instituteId: other.instituteId,
-      candidateName: other.name,
-      phoneNumber: other.phone,
-      email: email || undefined,
-      city: city || undefined,
-      state: state || undefined,
-      country: country || undefined,
-      dateOfBirth: null,
-      program: "",
-      status: "New",
-      communication: "Phone",
-      followUpDate,
-      description: `Lead generated from Others module. Source: ${other.dataSource}.`,
-
+      instituteId: instituteId || other.instituteId,
+      programId: programId || "",
+      program: programName, // ✅ FIXED
+      counsellorName,
+      candidateName: candidateName || other.name,
+      phoneNumber: phoneNumber || other.phone,
+      email: email || other.email,
+      ugDegree,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      country: country || other.country,
+      state: state || other.state,
+      city: city || other.city,
+      status: status || "New",
+      communication: communication || "Phone",
+      followUpDate: finalFollowUpDate,
+      description:
+        description ||
+        `Lead generated from Others module. Source: ${other.dataSource}`,
       followups: [firstFollowUp],
       createdBy,
     });
 
-    // ✅ IMPORTANT PART (what you asked)
+    // ✅ LINK OTHER → LEAD
     await Other.findOneAndUpdate(
       { recordId },
       { $set: { leadId: newLead._id } }
@@ -572,6 +606,7 @@ export const createLeadFromOther = async (req: AuthRequest, res: Response) => {
       message: "Lead created successfully",
       lead: newLead,
     });
+
   } catch (err: any) {
     console.error(err);
     return res.status(500).json({ message: err.message });
