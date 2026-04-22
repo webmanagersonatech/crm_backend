@@ -1,0 +1,306 @@
+import { Request, Response } from "express";
+import MatTraining from "./model";
+import { AuthRequest } from "../auth";
+import { matTrainingSchema } from "./matcoaching.sanitize";
+
+/* =========================
+   CREATE REGISTRATION
+========================= */
+
+
+const SibApiV3Sdk = require('sib-api-v3-sdk');
+
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+
+
+export const sendMatTrainingEmail = async (
+  email: string,
+  name: string,
+  regId: string
+) => {
+  const htmlContent = `
+    <h2>Welcome ${name},</h2>
+
+    <p>Thank you for registering for the <b>MAT Coaching Program</b> at 
+    <b>Sona Business School, Salem</b>.</p>
+
+    <p><strong>Your Registration ID:</strong> ${regId}</p>
+
+    <p>Our team will contact you shortly regarding the next steps.</p>
+
+    <br/>
+
+    <p>Best Regards,<br/>
+    Admissions Team<br/>
+    Sona Business School</p>
+  `;
+
+  await emailApi.sendTransacEmail({
+    sender: { email: "no-reply@sonatech.ac.in", name: "Sona Business School" },
+    to: [{ email, name }],
+    subject: "MAT Coaching Registration Successful",
+    htmlContent,
+  });
+};
+
+export const createMatTraining = async (req: Request, res: Response) => {
+  try {
+    /* =========================
+       ✅ VALIDATION
+    ========================= */
+    const { error, value } = matTrainingSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: error.details.map((e) => e.message),
+      });
+    }
+
+    const { mobile, email, name } = value;
+
+    /* =========================
+       🔒 DUPLICATE CHECK (ONE QUERY)
+    ========================= */
+    const existing = await MatTraining.findOne({
+      $or: [
+        { mobile },
+        { email: email.toLowerCase() },
+      ],
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message:
+          existing.mobile === mobile
+            ? "Mobile number already registered"
+            : "Email already registered",
+      });
+    }
+
+    /* =========================
+       💾 CREATE
+    ========================= */
+
+
+    const data = await MatTraining.create({
+      ...value,
+      email: email.toLowerCase(),
+    });
+
+    try {
+      await sendMatTrainingEmail(email, name, data.regId);
+    } catch (err) {
+      console.error("Email failed:", err);
+    }
+
+    res.status(201).json({
+      status: "success",
+      message: "Registration successful",
+      regId: data.regId,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+/* =========================
+   LIST (PAGINATION + SEARCH)
+========================= */
+export const listMatTraining = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      city,
+      studentWorking,
+      startDate,
+      endDate,
+    } = req.query;
+
+    let filter: any = {};
+
+    // 🔍 Search
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { mobile: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { regId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // 📅 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
+    // 📍 City filter
+    if (city && city !== "all") {
+      filter.city = city;
+    }
+
+    // 👨‍💼 Student / Working filter
+    if (studentWorking && studentWorking !== "all") {
+      filter.studentWorking = studentWorking;
+    }
+
+    // 📄 Pagination
+    const result = await (MatTraining as any).paginate(filter, {
+      page: Number(page),
+      limit: Number(limit),
+      sort: { createdAt: -1 },
+    });
+
+    // 📍 Distinct cities (for dropdown)
+    const cities = await MatTraining.distinct("city");
+
+    res.json({
+      ...result,
+      cityOptions: cities.filter((c) => c && c !== ""),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+/* =========================
+   EXPORT (NO PAGINATION)
+========================= */
+export const exportMatTraining = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const { search, city, studentWorking, startDate, endDate } = req.query;
+
+    let filter: any = {};
+
+    // 🔍 Search
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { mobile: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { regId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // 📅 Date filter
+    if (startDate || endDate) {
+      const dateFilter: any = {};
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+
+      filter.createdAt = dateFilter;
+    }
+
+    if (city && city !== "all") {
+      filter.city = city;
+    }
+
+    if (studentWorking && studentWorking !== "all") {
+      filter.studentWorking = studentWorking;
+    }
+
+    const data = await MatTraining.find(filter).sort({ createdAt: -1 });
+
+    res.json({
+      total: data.length,
+      data,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* =========================
+   GET SINGLE
+========================= */
+export const getMatTraining = async (req: Request, res: Response) => {
+  try {
+    const data = await MatTraining.findById(req.params.id);
+
+    if (!data) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* =========================
+   UPDATE
+========================= */
+export const updateMatTraining = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const updated = await MatTraining.findByIdAndUpdate(
+      id,
+      { $set: req.body },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    res.json({
+      message: "Updated successfully",
+      data: updated,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* =========================
+   DELETE
+========================= */
+export const deleteMatTraining = async (req: Request, res: Response) => {
+  try {
+    const deleted = await MatTraining.findByIdAndDelete(req.params.id);
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    res.json({ message: "Deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
