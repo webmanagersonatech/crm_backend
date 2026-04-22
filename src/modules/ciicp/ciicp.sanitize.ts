@@ -46,7 +46,8 @@ export const ciicpSchema = Joi.object({
 
   aadhaar: Joi.string()
     .pattern(/^\d{12}$/)
-    .required()
+    .allow("")
+    .optional()
     .messages({
       "string.pattern.base": "Aadhaar must be 12 digits",
     }),

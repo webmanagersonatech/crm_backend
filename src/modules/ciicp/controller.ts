@@ -19,19 +19,19 @@ export const createCIICP = async (req: Request, res: Response) => {
     }
 
     // 🔒 Optional duplicate check
-    const existingPhone = await CIICP.findOne({ phone: value.phone });
-    if (existingPhone) {
-      return res.status(400).json({
-        message: "Phone already registered",
-      });
-    }
+    // const existingPhone = await CIICP.findOne({ phone: value.phone });
+    // if (existingPhone) {
+    //   return res.status(400).json({
+    //     message: "Phone already registered",
+    //   });
+    // }
 
-    const existingAadhaar = await CIICP.findOne({ aadhaar: value.aadhaar });
-    if (existingAadhaar) {
-      return res.status(400).json({
-        message: "Aadhaar already registered",
-      });
-    }
+    // const existingAadhaar = await CIICP.findOne({ aadhaar: value.aadhaar });
+    // if (existingAadhaar) {
+    //   return res.status(400).json({
+    //     message: "Aadhaar already registered",
+    //   });
+    // }
 
     const data = await CIICP.create(value);
 

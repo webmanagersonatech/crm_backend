@@ -97,10 +97,6 @@ const CIICPSchema = new Schema<ICIICP>(
 
     aadhaar: {
       type: String,
-      required: true,
-      match: [/^\d{12}$/, "Aadhaar must be exactly 12 digits"],
-      // optional:
-      // unique: true,
     },
 
     qualification: {
