@@ -43,7 +43,7 @@ export const matTrainingSchema = Joi.object({
 
   paymentScreenshot: Joi.string()
     .pattern(/^data:image\/(jpeg|png|jpg);base64,/)
-    .required()
+    .allow("") // ✅ allows empty string
     .messages({
       "string.pattern.base": "Invalid image format (must be base64 image)",
     }),

@@ -54,8 +54,8 @@ export const createMatTraining = async (req: Request, res: Response) => {
 
     if (error) {
       return res.status(400).json({
-        message: "Validation failed",
-        errors: error.details.map((e) => e.message),
+
+        message: error.details.map((e) => e.message),
       });
     }
 
