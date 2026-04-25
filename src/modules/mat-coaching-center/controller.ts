@@ -44,6 +44,40 @@ export const sendMatTrainingEmail = async (
     htmlContent,
   });
 };
+export const sendPaymentReceivedEmail = async (
+  email: string,
+  name: string,
+  regId: string
+) => {
+  const htmlContent = `
+    <h2>Hello ${name},</h2>
+
+    <p>We have received your <b>payment screenshot</b> for the MAT Coaching Program.</p>
+
+    <p><strong>Registration ID:</strong> ${regId}</p>
+
+    <p>Our team will verify your payment shortly.</p>
+
+    <br/>
+
+    <p><b>Need help?</b><br/>
+    📞 +91 8190041151<br/>
+    📞 +91 7550357301</p>
+
+    <br/>
+
+    <p>Regards,<br/>
+    Admissions Team<br/>
+    Sona Business School</p>
+  `;
+
+  await emailApi.sendTransacEmail({
+    sender: { email: "no-reply@sonatech.ac.in", name: "Sona Business School" },
+    to: [{ email, name }],
+    subject: "Payment Screenshot Received - MAT Coaching",
+    htmlContent,
+  });
+};
 
 export const createMatTraining = async (req: Request, res: Response) => {
   try {
@@ -108,6 +142,59 @@ export const createMatTraining = async (req: Request, res: Response) => {
   }
 };
 
+export const uploadPaymentScreenshot = async (req: Request, res: Response) => {
+  try {
+    const { regId, screenshot } = req.body;
+
+
+    if (!regId || !screenshot || screenshot.trim() === "") {
+      return res.status(400).json({
+        message: "Valid regId and screenshot are required",
+      });
+    }
+
+
+    const record = await MatTraining.findOne({ regId });
+
+    if (!record) {
+      return res.status(404).json({
+        message: "Invalid Registration ID",
+      });
+    }
+
+
+    if (record.paymentScreenshot && record.paymentScreenshot.trim() !== "") {
+      return res.status(400).json({
+        message: "Payment screenshot already uploaded",
+      });
+    }
+
+
+    record.paymentScreenshot = screenshot;
+    await record.save();
+
+    try {
+      if (record.email) {
+        await sendPaymentReceivedEmail(
+          record.email,
+          record.name,
+          record.regId
+        );
+      }
+    } catch (err) {
+      console.error("Payment email failed:", err);
+    }
+
+    
+    res.json({
+      message: "Payment screenshot uploaded successfully",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
 /* =========================
    LIST (PAGINATION + SEARCH)
 ========================= */
