@@ -88,7 +88,7 @@ export const sendPaymentVerifiedEmail = async (
   const htmlContent = `
     <h2>Hi ${name},</h2>
 
-    <p>🎉 Your payment has been <b>successfully verified</b> for the MAT Coaching Program.</p>
+    <p> Your payment has been <b>successfully verified</b> for the MAT Coaching Program.</p>
 
     <p><strong>Registration ID:</strong> ${regId}</p>
 
