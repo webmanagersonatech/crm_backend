@@ -193,7 +193,6 @@ export const toggleTempAdminAccess = async (req: AuthRequest, res: Response) => 
 
 export const getTempAdminAccess = async (req: AuthRequest, res: Response) => {
   try {
-
     const user = await User.findById(req.user.id)
       .select("tempAdminAccess role");
 
@@ -204,10 +203,24 @@ export const getTempAdminAccess = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    let permissionsData = [];
+
+    if (user.role !== "superadmin") {
+      const permissions = await Permission.findOne({ userId: user._id });
+
+      if (permissions?.permissions) {
+        permissionsData = permissions.permissions.map((perm: any) => ({
+          moduleName: perm.moduleName,
+          view: perm.view ?? false  
+        }));
+      }
+    }
+
     return res.json({
       status: true,
       tempAdminAccess: user.tempAdminAccess,
-      role: user.role
+      role: user.role,
+      permissions: permissionsData
     });
 
   } catch (err: any) {

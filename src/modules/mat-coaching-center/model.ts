@@ -20,7 +20,9 @@ export interface IMatTraining extends Document {
   studentWorking: string;
 
   paymentScreenshot?: string;
-
+  paymentVerified?: boolean;
+  verifiedBy?: mongoose.Types.ObjectId;
+  paymentVerifiedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -50,6 +52,19 @@ const MatTrainingSchema = new Schema<IMatTraining>(
     studentWorking: { type: String },
 
     paymentScreenshot: { type: String },
+    paymentVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    paymentVerifiedAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,

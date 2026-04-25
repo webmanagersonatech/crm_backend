@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import MatTraining from "./model";
 import { AuthRequest } from "../auth";
 import { matTrainingSchema } from "./matcoaching.sanitize";
-
+import Permission from "../permissions/model";
 /* =========================
    CREATE REGISTRATION
 ========================= */
@@ -32,9 +32,10 @@ export const sendMatTrainingEmail = async (
 
     <br/>
 
-    <p>Best Regards,<br/>
-    Admissions Team<br/>
-    Sona Business School</p>
+
+     <p>Best Regards,<br/>
+     MAT Training Centre,<br/>
+    Sona College of Technology,<br/>Salem - 636 005.</p>
   `;
 
   await emailApi.sendTransacEmail({
@@ -67,14 +68,49 @@ export const sendPaymentReceivedEmail = async (
     <br/>
 
     <p>Regards,<br/>
-    Admissions Team<br/>
-    Sona Business School</p>
+     MAT Training Centre,<br/>
+    Sona College of Technology,<br/>Salem - 636 005.</p>
   `;
+
 
   await emailApi.sendTransacEmail({
     sender: { email: "no-reply@sonatech.ac.in", name: "Sona Business School" },
     to: [{ email, name }],
     subject: "Payment Screenshot Received - MAT Coaching",
+    htmlContent,
+  });
+};
+export const sendPaymentVerifiedEmail = async (
+  email: string,
+  name: string,
+  regId: string
+) => {
+  const htmlContent = `
+    <h2>Hi ${name},</h2>
+
+    <p>🎉 Your payment has been <b>successfully verified</b> for the MAT Coaching Program.</p>
+
+    <p><strong>Registration ID:</strong> ${regId}</p>
+
+    <p>You are now officially enrolled. Our team will contact you with further details regarding classes and schedule.</p>
+
+    <br/>
+
+    <p><b>Need help?</b><br/>
+    📞 +91 8190041151<br/>
+    📞 +91 7550357301</p>
+
+    <br/>
+
+    <p>Best Regards,<br/>
+    MAT Training Centre,<br/>
+    Sona College of Technology,<br/>Salem - 636 005.</p>
+  `;
+
+  await emailApi.sendTransacEmail({
+    sender: { email: "no-reply@sonatech.ac.in", name: "Sona Business School" },
+    to: [{ email, name }],
+    subject: "Payment Verified - MAT Coaching",
     htmlContent,
   });
 };
@@ -185,7 +221,7 @@ export const uploadPaymentScreenshot = async (req: Request, res: Response) => {
       console.error("Payment email failed:", err);
     }
 
-    
+
     res.json({
       message: "Payment screenshot uploaded successfully",
     });
@@ -208,7 +244,35 @@ export const listMatTraining = async (req: AuthRequest, res: Response) => {
       studentWorking,
       startDate,
       endDate,
+      paymentStatus,
+      verificationStatus,
     } = req.query;
+
+
+    const user = req.user;
+
+    // 🔐 Auth check
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+    if (user.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const modulePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "MAT Registration"
+      );
+
+      if (!modulePermission?.view) {
+        return res.status(403).json({
+          message: "No permission to view data",
+        });
+      }
+    }
 
     let filter: any = {};
 
@@ -246,6 +310,28 @@ export const listMatTraining = async (req: AuthRequest, res: Response) => {
       filter.city = city;
     }
 
+    // 💰 Payment Screenshot Filter
+    if (paymentStatus && paymentStatus !== "all") {
+      if (paymentStatus === "submitted") {
+        filter.paymentScreenshot = { $ne: null };
+      } else if (paymentStatus === "not_submitted") {
+        filter.$or = [
+          { paymentScreenshot: { $exists: false } },
+          { paymentScreenshot: null },
+          { paymentScreenshot: "" },
+        ];
+      }
+    }
+
+    // ✅ Verification Filter
+    if (verificationStatus && verificationStatus !== "all") {
+      if (verificationStatus === "verified") {
+        filter.paymentVerified = true;
+      } else if (verificationStatus === "not_verified") {
+        filter.paymentVerified = false;
+      }
+    }
+
     // 👨‍💼 Student / Working filter
     if (studentWorking && studentWorking !== "all") {
       filter.studentWorking = studentWorking;
@@ -261,10 +347,115 @@ export const listMatTraining = async (req: AuthRequest, res: Response) => {
     // 📍 Distinct cities (for dropdown)
     const cities = await MatTraining.distinct("city");
 
+    const studentsCount = await MatTraining.countDocuments({
+      ...filter,
+      studentWorking: "Student"
+    });
+
+    const workingCount = await MatTraining.countDocuments({
+      ...filter,
+      studentWorking: "Working"
+    });
+
     res.json({
       ...result,
       cityOptions: cities.filter((c) => c && c !== ""),
+      statistics: {
+        totalRegistrations: result.totalDocs,
+        totalCities: cities.filter((c) => c && c !== "").length,
+        totalStudents: studentsCount,
+        totalWorking: workingCount,
+      }
     });
+  } catch (error: any) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
+
+
+export const verifyPayment = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { paymentVerified } = req.body;
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    /* 🔒 Permission check */
+    if (user.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const modulePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "MAT Registration"
+      );
+
+      if (!modulePermission?.edit) {
+        return res.status(403).json({
+          message: "No permission to verify payment",
+        });
+      }
+    }
+
+    /* ❗ Validate */
+    if (typeof paymentVerified !== "boolean") {
+      return res.status(400).json({
+        message: "paymentVerified must be true or false",
+      });
+    }
+
+    const record = await MatTraining.findById(id);
+
+    if (!record) {
+      return res.status(404).json({
+        message: "Record not found",
+      });
+    }
+
+    if (!record.paymentScreenshot) {
+      return res.status(400).json({
+        message: "Upload payment screenshot first",
+      });
+    }
+    const wasVerified = record.paymentVerified;
+    /* ✅ Update */
+    record.paymentVerified = paymentVerified;
+
+    if (paymentVerified) {
+      record.verifiedBy = user.id;              // 🔥 store who verified
+      record.paymentVerifiedAt = new Date();    // 🔥 timestamp
+    } else {
+      record.verifiedBy = undefined;            // reset
+      record.paymentVerifiedAt = undefined;
+    }
+
+    await record.save();
+    try {
+      if (paymentVerified && !wasVerified && record.email) {
+        await sendPaymentVerifiedEmail(
+          record.email,
+          record.name,
+          record.regId
+        );
+      }
+    } catch (err) {
+      console.error("Verification email failed:", err);
+    }
+
+    res.json({
+      message: paymentVerified
+        ? "Payment verified successfully"
+        : "Payment verification removed",
+      data: record,
+    });
+
   } catch (error: any) {
     res.status(500).json({
       message: error.message,
@@ -280,7 +471,32 @@ export const exportMatTraining = async (
   res: Response
 ) => {
   try {
-    const { search, city, studentWorking, startDate, endDate } = req.query;
+    const { search, city, studentWorking, startDate, endDate, paymentStatus,
+      verificationStatus, } = req.query;
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    // 🔐 Permission check
+    if (user.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const modulePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "MAT Registration"
+      );
+
+      if (!modulePermission?.filter) {
+        return res.status(403).json({
+          message: "No permission to export data",
+        });
+      }
+    }
 
     let filter: any = {};
 
@@ -315,6 +531,28 @@ export const exportMatTraining = async (
 
     if (city && city !== "all") {
       filter.city = city;
+    }
+
+    // 💰 Payment Screenshot Filter
+    if (paymentStatus && paymentStatus !== "all") {
+      if (paymentStatus === "submitted") {
+        filter.paymentScreenshot = { $ne: null };
+      } else if (paymentStatus === "not_submitted") {
+        filter.$or = [
+          { paymentScreenshot: { $exists: false } },
+          { paymentScreenshot: null },
+          { paymentScreenshot: "" },
+        ];
+      }
+    }
+
+    // ✅ Verification Filter
+    if (verificationStatus && verificationStatus !== "all") {
+      if (verificationStatus === "verified") {
+        filter.paymentVerified = true;
+      } else if (verificationStatus === "not_verified") {
+        filter.paymentVerified = false;
+      }
     }
 
     if (studentWorking && studentWorking !== "all") {
