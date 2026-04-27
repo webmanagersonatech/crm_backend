@@ -2020,7 +2020,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       page,
       limit,
       sort: { createdAt: -1 },
-      select: '-personalDetails -educationDetails',
+      select: '-educationDetails',
       populate: [
         { path: 'institute', select: 'name ' },
         {
