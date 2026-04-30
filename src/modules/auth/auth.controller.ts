@@ -203,16 +203,15 @@ export const getTempAdminAccess = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    let permissionsData = [];
+    let permissionsData: string[] = [];
 
     if (user.role !== "superadmin") {
       const permissions = await Permission.findOne({ userId: user._id });
 
       if (permissions?.permissions) {
-        permissionsData = permissions.permissions.map((perm: any) => ({
-          moduleName: perm.moduleName,
-          view: perm.view ?? false  
-        }));
+        permissionsData = permissions.permissions
+          .filter((perm: any) => perm.view === true)
+          .map((perm: any) => perm.moduleName);
       }
     }
 
