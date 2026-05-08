@@ -14,7 +14,7 @@ import Payments from "../payment/model";
 import Institution from "../institutions/model";
 import path from 'path';
 import fs from 'fs';
-import axios from 'axios';
+import Permission from '../permissions/model'
 import crypto from "crypto";
 import Otp from "../otp/model";
 
@@ -429,6 +429,7 @@ export const getStudent = async (req: Request, res: Response) => {
 export const listStudents = async (req: AuthRequest, res: Response) => {
   try {
     // Pagination
+    const user = req.user
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const startCutoff = req.query.startCutoff as string;
@@ -457,6 +458,24 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     // Role-based access
     const userRole = req.user.role;
     const query: any = {};
+
+    if (user.role !== "superadmin") {
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const summerCampPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Students"
+      );
+
+      if (!summerCampPermission?.view) {
+        return res.status(403).json({
+          message: "You have no permission to view this data",
+        });
+      }
+    }
 
     if (userRole === "superadmin") {
       const instituteId = (req.query.instituteId as string) || "all";

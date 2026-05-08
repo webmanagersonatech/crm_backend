@@ -677,7 +677,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
     }
 
     // 🔍 BUILD SEARCH TEXT (AUTO)
-    const searchText = buildSearchTextFromSections(
+    const searchText: any = buildSearchTextFromSections(
       personalDetails,
       educationDetails
     );
@@ -1606,7 +1606,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     const studentImage = flattenedPersonalFields["Student Image"] ||
       flattenedPersonalFields["studentImage"] ||
       flattenedPersonalFields["Student Photo"]
-      flattenedPersonalFields["profileImage"] ||
+    flattenedPersonalFields["profileImage"] ||
       flattenedPersonalFields["Profile Image"];
     const firstname =
       flattenedPersonalFields["Full Name"] ||
@@ -1882,8 +1882,6 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
     if (!user) return res.status(401).json({ message: 'Not authorized' })
 
-
-
     if (user.role !== "superadmin") {
 
       const permissionDoc = await Permission.findOne({
@@ -1917,7 +1915,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
         userId: user.id
       }
     }
-
+    const locationCondition = req.query.locationCondition || "equals";
     // 🎯 Optional filters
     if (req.query.academicYear) filter.academicYear = req.query.academicYear
     if (req.query.instituteId) filter.instituteId = req.query.instituteId
@@ -1956,13 +1954,46 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    if (req.query.country) filter.country = req.query.country;
-    if (req.query.state) filter.state = req.query.state;
+    if (req.query.country) {
+      if (locationCondition === "not_equals") {
+        filter.country = { $ne: req.query.country };
+      } else {
+        filter.country = req.query.country;
+      }
+    }
+
+    // State
+    if (req.query.state) {
+      if (Array.isArray(req.query.state)) {
+        if (locationCondition === "not_equals") {
+          filter.state = { $nin: req.query.state };
+        } else {
+          filter.state = { $in: req.query.state };
+        }
+      } else {
+        if (locationCondition === "not_equals") {
+          filter.state = { $ne: req.query.state };
+        } else {
+          filter.state = req.query.state;
+        }
+      }
+    }
+
+
+    // City
     if (req.query.city) {
       if (Array.isArray(req.query.city)) {
-        filter.city = { $in: req.query.city };
+        if (locationCondition === "not_equals") {
+          filter.city = { $nin: req.query.city };
+        } else {
+          filter.city = { $in: req.query.city };
+        }
       } else {
-        filter.city = req.query.city;
+        if (locationCondition === "not_equals") {
+          filter.city = { $ne: req.query.city };
+        } else {
+          filter.city = req.query.city;
+        }
       }
     }
 
@@ -2031,6 +2062,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     }
 
     const applications = await (Application as any).paginate(filter, options)
+
     const yearFilter: any = {}
 
     if (filter.instituteId) {
@@ -2041,7 +2073,113 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       yearFilter.createdAt = filter.createdAt
     }
 
+
+
+
     const academicYears = await Application.distinct("academicYear", yearFilter)
+
+    const statsFilter = { ...filter };
+
+
+
+    // =========================
+    // Location Stats
+    // =========================
+    let countryStats: any[] = [];
+    let stateStats: any[] = [];
+    let cityStats: any[] = [];
+
+    if (req.query.showCountryStateCityStats === "true") {
+      [countryStats, stateStats, cityStats] = await Promise.all([
+        // Countries
+        Application.aggregate([
+          {
+            $match: statsFilter,
+          },
+          {
+            $group: {
+              _id: "$country",
+              count: {
+                $sum: 1,
+              },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: "$_id",
+              count: 1,
+            },
+          },
+          {
+            $sort: {
+              count: -1,
+            },
+          },
+        ]),
+
+        // States
+        Application.aggregate([
+          {
+            $match: statsFilter,
+          },
+          {
+            $group: {
+              _id: "$state",
+              count: {
+                $sum: 1,
+              },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: "$_id",
+              count: 1,
+            },
+          },
+          {
+            $sort: {
+              count: -1,
+            },
+          },
+        ]),
+
+        // Cities
+        Application.aggregate([
+          {
+            $match: statsFilter,
+          },
+          {
+            $group: {
+              _id: "$city",
+              count: {
+                $sum: 1,
+              },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: "$_id",
+              count: 1,
+            },
+          },
+          {
+            $sort: {
+              count: -1,
+            },
+          },
+        ]),
+      ]);
+    }
+
+    const locationStats = {
+      countries: countryStats,
+      states: stateStats,
+      cities: cityStats,
+    };
+
 
     const formkeyvalues = await formmanager.find({
       instituteId: filter.instituteId
@@ -2079,6 +2217,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       },
       data: applications.docs,
       academicYears,
+      locationStats,
       courses: courses || [],
       filters: {
         personalDetails: personalDetailsKeyValues,
@@ -2111,7 +2250,7 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
         userId: user.id
       }
     }
-
+    const locationCondition = req.query.locationCondition || "equals";
     // 🎯 Optional filters (same filtering logic as listApplications)
     if (req.query.academicYear) filter.academicYear = req.query.academicYear
     if (req.query.instituteId) filter.instituteId = req.query.instituteId
@@ -2136,13 +2275,47 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    if (req.query.country) filter.country = req.query.country;
-    if (req.query.state) filter.state = req.query.state;
+
+    if (req.query.country) {
+      if (locationCondition === "not_equals") {
+        filter.country = { $ne: req.query.country };
+      } else {
+        filter.country = req.query.country;
+      }
+    }
+
+    // State
+    if (req.query.state) {
+      if (Array.isArray(req.query.state)) {
+        if (locationCondition === "not_equals") {
+          filter.state = { $nin: req.query.state };
+        } else {
+          filter.state = { $in: req.query.state };
+        }
+      } else {
+        if (locationCondition === "not_equals") {
+          filter.state = { $ne: req.query.state };
+        } else {
+          filter.state = req.query.state;
+        }
+      }
+    }
+
+
+    // City
     if (req.query.city) {
       if (Array.isArray(req.query.city)) {
-        filter.city = { $in: req.query.city };
+        if (locationCondition === "not_equals") {
+          filter.city = { $nin: req.query.city };
+        } else {
+          filter.city = { $in: req.query.city };
+        }
       } else {
-        filter.city = req.query.city;
+        if (locationCondition === "not_equals") {
+          filter.city = { $ne: req.query.city };
+        } else {
+          filter.city = req.query.city;
+        }
       }
     }
     // 🎯 cutoff Range Filter
