@@ -3,12 +3,12 @@ import Lead from "../lead/model";
 import Application from "../applications/model";
 import Institution from "../institutions/model";
 import { AuthRequest } from "../../middlewares/auth";
-import moment from "moment-timezone";
 
 
 // export const dashboardData = async (req: AuthRequest, res: Response) => {
 //   try {
-//     const { startDate, endDate, instituteId, page = 1, limit = 5 } = req.query;
+//     const { startDate, endDate, instituteId, page = 1,
+//       limit = 5, } = req.query;
 //     const user = req.user;
 
 //     if (!user) return res.status(401).json({ message: "Not authorized" });
@@ -24,26 +24,22 @@ import moment from "moment-timezone";
 //       }
 //     } else if (user.role === "admin") {
 //       leadFilter.instituteId = user.instituteId;
-//       if (user.departments && user.departments.length > 0) {
-//         leadFilter.programId = { $in: user.departments }; // ✅ for leads
-
-//         // ⚠️ only if Application also has programId
-//         appFilter.programId = { $in: user.departments }; // ✅ for applications
-//       }
 //       appFilter.instituteId = user.instituteId;
 //     } else {
 //       leadFilter = { instituteId: user.instituteId, createdBy: user.id };
 //       appFilter = { instituteId: user.instituteId, userId: user.id };
 //     }
 
-//     // ------------------ CREATED DATE FILTER ------------------
+//     // ------------------ CREATED DATE FILTER (for Leads & Applications only) ------------------
 //     if (startDate || endDate) {
 //       const createdFilter: any = {};
+
 //       if (startDate) {
 //         const s = new Date(startDate as string);
 //         s.setHours(0, 0, 0, 0);
 //         createdFilter.$gte = s;
 //       }
+
 //       if (endDate) {
 //         const e = new Date(endDate as string);
 //         e.setHours(23, 59, 59, 999);
@@ -53,62 +49,59 @@ import moment from "moment-timezone";
 //       leadFilter.createdAt = createdFilter;
 //       appFilter.createdAt = createdFilter;
 //     }
-
 //     const { createdAt, ...leadBaseFilter } = leadFilter;
+//     // ------------------ FOLLOWUP LEAD FILTER (ONLY followUpDate) ------------------
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0); // today at 00:00
 
-//     // ------------------ FOLLOWUP LEAD FILTER ------------------
+//     // ------------------ FOLLOWUP LEAD FILTER (ONLY followUpDate) ------------------
 //     const followUpLeadFilter: any = {
-//       ...leadBaseFilter,
-//       status: "Followup",
+//       ...leadBaseFilter, // institute/user filter without createdAt
+//       status: "Followup"
 //     };
 
-//     if (startDate && endDate) {
-//       const s = new Date(startDate as string);
-//       s.setHours(0, 0, 0, 0);
-//       const e = new Date(endDate as string);
-//       e.setHours(23, 59, 59, 999);
+//     if (startDate || endDate) {
+//       const followUpRange: any = {};
+
+//       // filter start
+//       if (startDate) {
+//         const s = new Date(startDate as string);
+//         s.setHours(0, 0, 0, 0);
+//         followUpRange.$gte = s;
+//       } else {
+//         followUpRange.$gte = today; // default start = today
+//       }
+
+//       // filter end
+//       if (endDate) {
+//         const e = new Date(endDate as string);
+//         e.setHours(23, 59, 59, 999);
+//         followUpRange.$lte = e;
+//       }
 
 //       followUpLeadFilter.followups = {
 //         $elemMatch: {
 //           status: "Followup",
-//           followUpDate: { $gte: s, $lte: e }, // only when both dates exist
-//         },
+//           followUpDate: followUpRange
+//         }
+//       };
+//     } else {
+//       // no filter → all future followups
+//       followUpLeadFilter.followups = {
+//         $elemMatch: {
+//           status: "Followup",
+//           followUpDate: { $gte: today }
+//         }
 //       };
 //     }
 
-//     const todayStart = new Date();
-//     todayStart.setHours(0, 0, 0, 0);
-
-//     const todayEnd = new Date();
-//     todayEnd.setHours(23, 59, 59, 999);
-
-//     const todayLeadFilter = {
-//       ...leadFilter,
-//       createdAt: { $gte: todayStart, $lte: todayEnd },
-//     };
-
-//     const todayAppFilter = {
-//       ...appFilter,
-//       createdAt: { $gte: todayStart, $lte: todayEnd },
-//     };
-
-//     const todayFollowUpLeadFilter = {
-//       ...leadBaseFilter,
-//       status: "Followup",
-//       followups: {
-//         $elemMatch: {
-//           status: "Followup",
-//           followUpDate: {
-//             $gte: todayStart,
-//             $lte: todayEnd,
-//           },
-//         },
-//       },
-//     };
-
-//     // If only one of startDate or endDate is provided, or neither → no followUpDate filter
-
 //     const followUpLeads = await Lead.countDocuments(followUpLeadFilter);
+
+
+
+
+
+
 
 //     // ------------------ DASHBOARD COUNTS ------------------
 //     const [
@@ -118,27 +111,15 @@ import moment from "moment-timezone";
 //       paidApplications,
 //       unpaidApplications,
 //       closedLeads,
-//       notInterestedLeads,
-//       completeApplications,     // ✅ NEW
-//       incompleteApplications,
-//       todayLeads,
-//       todayApplications,
-//       todayFollowUpLeads
+//       notInterestedLeads
 //     ] = await Promise.all([
 //       Institution.countDocuments(),
 //       Lead.countDocuments(leadFilter),
 //       Application.countDocuments(appFilter),
 //       Application.countDocuments({ ...appFilter, paymentStatus: "Paid" }),
 //       Application.countDocuments({ ...appFilter, paymentStatus: "Unpaid" }),
-
 //       Lead.countDocuments({ ...leadFilter, status: "Closed" }),
-//       Lead.countDocuments({ ...leadFilter, status: "Not Interested" }),
-
-//       Application.countDocuments({ ...appFilter, formStatus: "Complete" }),
-//       Application.countDocuments({ ...appFilter, formStatus: "Incomplete" }),
-//       Lead.countDocuments(todayLeadFilter),
-//       Application.countDocuments(todayAppFilter),
-//       Lead.countDocuments(todayFollowUpLeadFilter),
+//       Lead.countDocuments({ ...leadFilter, status: "Not Interested" })
 //     ]);
 
 //     res.status(200).json({
@@ -151,12 +132,7 @@ import moment from "moment-timezone";
 //         paidApplications,
 //         unpaidApplications,
 //         closedLeads,
-//         notInterestedLeads,
-//         completeApplications,
-//         incompleteApplications,
-//         todayLeads,
-//         todayApplications,
-//         todayFollowUpLeads,
+//         notInterestedLeads
 //       }
 //     });
 
@@ -165,8 +141,6 @@ import moment from "moment-timezone";
 //     res.status(500).json({ success: false, message: error.message });
 //   }
 // };
-
-
 
 export const dashboardData = async (req: AuthRequest, res: Response) => {
   try {
@@ -186,44 +160,29 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       }
     } else if (user.role === "admin") {
       leadFilter.instituteId = user.instituteId;
-
       if (user.departments && user.departments.length > 0) {
-        leadFilter.programId = { $in: user.departments };
-        appFilter.programId = { $in: user.departments };
-      }
+        leadFilter.programId = { $in: user.departments }; // ✅ for leads
 
+        // ⚠️ only if Application also has programId
+        appFilter.programId = { $in: user.departments }; // ✅ for applications
+      }
       appFilter.instituteId = user.instituteId;
     } else {
-      leadFilter = {
-        instituteId: user.instituteId,
-        createdBy: user.id,
-      };
-
-      appFilter = {
-        instituteId: user.instituteId,
-        userId: user.id,
-      };
+      leadFilter = { instituteId: user.instituteId, createdBy: user.id };
+      appFilter = { instituteId: user.instituteId, userId: user.id };
     }
 
     // ------------------ CREATED DATE FILTER ------------------
     if (startDate || endDate) {
       const createdFilter: any = {};
-
       if (startDate) {
-        const s = moment(startDate as string)
-          .tz("Asia/Kolkata")
-          .startOf("day")
-          .toDate();
-
+        const s = new Date(startDate as string);
+        s.setHours(0, 0, 0, 0);
         createdFilter.$gte = s;
       }
-
       if (endDate) {
-        const e = moment(endDate as string)
-          .tz("Asia/Kolkata")
-          .endOf("day")
-          .toDate();
-
+        const e = new Date(endDate as string);
+        e.setHours(23, 59, 59, 999);
         createdFilter.$lte = e;
       }
 
@@ -240,52 +199,33 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
     };
 
     if (startDate && endDate) {
-      const s = moment(startDate as string)
-        .tz("Asia/Kolkata")
-        .startOf("day")
-        .toDate();
-
-      const e = moment(endDate as string)
-        .tz("Asia/Kolkata")
-        .endOf("day")
-        .toDate();
+      const s = new Date(startDate as string);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(endDate as string);
+      e.setHours(23, 59, 59, 999);
 
       followUpLeadFilter.followups = {
         $elemMatch: {
           status: "Followup",
-          followUpDate: {
-            $gte: s,
-            $lte: e,
-          },
+          followUpDate: { $gte: s, $lte: e }, // only when both dates exist
         },
       };
     }
 
-    // ------------------ TODAY DATE FILTER ------------------
-    const todayStart = moment()
-      .tz("Asia/Kolkata")
-      .startOf("day")
-      .toDate();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-    const todayEnd = moment()
-      .tz("Asia/Kolkata")
-      .endOf("day")
-      .toDate();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
     const todayLeadFilter = {
       ...leadFilter,
-      createdAt: {
-        $gte: todayStart,
-        $lte: todayEnd,
-      },
+      createdAt: { $gte: todayStart, $lte: todayEnd },
     };
 
     const todayAppFilter = {
       ...appFilter,
-      createdAt: {
-        $gte: todayStart,
-        $lte: todayEnd,
-      },
+      createdAt: { $gte: todayStart, $lte: todayEnd },
     };
 
     const todayFollowUpLeadFilter = {
@@ -302,6 +242,8 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       },
     };
 
+    // If only one of startDate or endDate is provided, or neither → no followUpDate filter
+
     const followUpLeads = await Lead.countDocuments(followUpLeadFilter);
 
     // ------------------ DASHBOARD COUNTS ------------------
@@ -313,52 +255,25 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
       unpaidApplications,
       closedLeads,
       notInterestedLeads,
-      completeApplications,
+      completeApplications,     // ✅ NEW
       incompleteApplications,
       todayLeads,
       todayApplications,
-      todayFollowUpLeads,
+      todayFollowUpLeads
     ] = await Promise.all([
       Institution.countDocuments(),
-
       Lead.countDocuments(leadFilter),
-
       Application.countDocuments(appFilter),
+      Application.countDocuments({ ...appFilter, paymentStatus: "Paid" }),
+      Application.countDocuments({ ...appFilter, paymentStatus: "Unpaid" }),
 
-      Application.countDocuments({
-        ...appFilter,
-        paymentStatus: "Paid",
-      }),
+      Lead.countDocuments({ ...leadFilter, status: "Closed" }),
+      Lead.countDocuments({ ...leadFilter, status: "Not Interested" }),
 
-      Application.countDocuments({
-        ...appFilter,
-        paymentStatus: "Unpaid",
-      }),
-
-      Lead.countDocuments({
-        ...leadFilter,
-        status: "Closed",
-      }),
-
-      Lead.countDocuments({
-        ...leadFilter,
-        status: "Not Interested",
-      }),
-
-      Application.countDocuments({
-        ...appFilter,
-        formStatus: "Complete",
-      }),
-
-      Application.countDocuments({
-        ...appFilter,
-        formStatus: "Incomplete",
-      }),
-
+      Application.countDocuments({ ...appFilter, formStatus: "Complete" }),
+      Application.countDocuments({ ...appFilter, formStatus: "Incomplete" }),
       Lead.countDocuments(todayLeadFilter),
-
       Application.countDocuments(todayAppFilter),
-
       Lead.countDocuments(todayFollowUpLeadFilter),
     ]);
 
@@ -378,55 +293,31 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
         todayLeads,
         todayApplications,
         todayFollowUpLeads,
-      },
+      }
     });
+
   } catch (error: any) {
     console.error("❌ Dashboard Data Error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
-export const getNewAndFollowupLeads = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const getNewAndFollowupLeads = async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      startDate,
-      endDate,
-      instituteId,
-      page = 1,
-      limit = 20,
-    } = req.query;
-
+    const { startDate, endDate, instituteId, page = 1, limit = 20 } = req.query;
     const user = req.user;
-
-    if (!user) {
-      return res.status(401).json({
-        message: "Not authorized",
-      });
-    }
+    if (!user) return res.status(401).json({ message: "Not authorized" });
 
     // ------------------ BASE FILTER ------------------
     let leadBaseFilter: any = {};
-
     if (user.role === "superadmin") {
       if (instituteId && instituteId !== "all") {
         leadBaseFilter.instituteId = instituteId;
       }
     } else if (user.role === "admin") {
       if (user.departments && user.departments.length > 0) {
-        leadBaseFilter.programId = {
-          $in: user.departments,
-        };
+        leadBaseFilter.programId = { $in: user.departments };
       }
-
       leadBaseFilter.instituteId = user.instituteId;
     } else {
       leadBaseFilter.instituteId = user.instituteId;
@@ -436,25 +327,16 @@ export const getNewAndFollowupLeads = async (
     // ------------------ CREATED DATE RANGE ------------------
     if (startDate || endDate) {
       const createdFilter: any = {};
-
       if (startDate) {
-        const s = moment(startDate as string)
-          .tz("Asia/Kolkata")
-          .startOf("day")
-          .toDate();
-
+        const s = new Date(startDate as string);
+        s.setHours(0, 0, 0, 0);
         createdFilter.$gte = s;
       }
-
       if (endDate) {
-        const e = moment(endDate as string)
-          .tz("Asia/Kolkata")
-          .endOf("day")
-          .toDate();
-
+        const e = new Date(endDate as string);
+        e.setHours(23, 59, 59, 999);
         createdFilter.$lte = e;
       }
-
       leadBaseFilter.createdAt = createdFilter;
     }
 
@@ -462,47 +344,29 @@ export const getNewAndFollowupLeads = async (
     const filter: any = {
       ...leadBaseFilter,
       $or: [
-        {
-          status: "New",
-        },
-        {
-          status: "Followup",
-        },
-      ],
+        { status: "New" },
+        { status: "Followup" } // no followUpDate filter
+      ]
     };
 
     // ------------------ FETCH WITH PAGINATION ------------------
     const leads = await Lead.paginate(filter, {
       page: Number(page),
       limit: Number(limit),
-
       populate: [
-        {
-          path: "creator",
-          select: "firstname lastname instituteId role",
-        },
-        {
-          path: "institute",
-          select: "name",
-        },
+        { path: "creator", select: "firstname lastname instituteId role" },
+        { path: "institute", select: "name" },
       ],
-
-      sort: {
-        createdAt: -1,
-      },
+      sort: { createdAt: -1 }
     });
 
     return res.status(200).json({
       success: true,
-      data: leads,
+      data: leads
     });
   } catch (error: any) {
     console.error("❌ New+Followup Leads Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
