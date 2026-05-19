@@ -163,7 +163,8 @@ const extractKeyOptionsForFilter = (sections: any[]) => {
         label: field.label,
         type: field.type,
         options: field.options || [],
-        multiple: field.multiple || false
+        multiple: field.multiple || false,
+        searchNumber: field.searchNumber || ""
       });
     });
   });
@@ -2185,6 +2186,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
       instituteId: filter.instituteId
     });
 
+
     let personalDetailsKeyValues: any[] = [];
     let educationDetailsKeyValues: any[] = [];
     if (formkeyvalues.length) {
@@ -2192,6 +2194,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
 
       personalDetailsKeyValues =
         extractKeyOptionsForFilter(form.personalDetails || []);
+
 
       educationDetailsKeyValues =
         extractKeyOptionsForFilter(form.educationDetails || []);

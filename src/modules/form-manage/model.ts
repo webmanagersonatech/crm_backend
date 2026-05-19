@@ -9,11 +9,12 @@ export interface ISectionField {
   label?: string
   type: string
   required?: boolean
-  minLength?: number 
+  minLength?: number
   maxLength?: number
   options?: string[]
   multiple?: boolean
   declarationText?: string
+  searchNumber?: string
 }
 
 const SectionFieldSchema = new Schema<ISectionField>(
@@ -23,10 +24,11 @@ const SectionFieldSchema = new Schema<ISectionField>(
     type: { type: String, required: true },
     required: { type: Boolean, default: false },
     options: [{ type: String }],
-    minLength: { type: Number }, 
+    minLength: { type: Number },
     maxLength: { type: Number },
     multiple: { type: Boolean, default: false },
-    declarationText: { type: String }
+    declarationText: { type: String },
+    searchNumber: { type: String }
   },
   { _id: false }
 )
