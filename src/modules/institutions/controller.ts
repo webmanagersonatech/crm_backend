@@ -287,6 +287,9 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
   try {
     const { instituteId } = req.params;
 
+    const { source } = req.query;
+    console.log(source, "source")
+
     const portalURL =
       process.env.ENQUIRY_PORTAL_URL || "http://localhost:3002";
 
@@ -304,7 +307,8 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
     }
 
     return res.redirect(
-      `${portalURL}/set-institute?instituteId=${instituteId}`
+      `${portalURL}/set-institute?instituteId=${instituteId}${source ? `&source=${source}` : ""
+      }`
     );
   } catch (err) {
     console.error(err);
