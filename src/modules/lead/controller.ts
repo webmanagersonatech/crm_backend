@@ -830,6 +830,7 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
       leadId,      // ✅ added
       country, state, city,
       isduplicate,
+      medium,
       leadSource,
     } = req.query;
 
@@ -877,6 +878,7 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
 
     // 🔹 Optional filters
     if (leadSource) filter.leadSource = leadSource;
+    if (medium) filter.medium = medium;
     if (status) filter.status = status;
     if (country) filter.country = country;
     if (state) filter.state = state;
@@ -991,6 +993,15 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     ]);
     const settings = await Settings.findOne({ instituteId: filter.instituteId });
 
+    const mediumFilter = { ...filter };
+
+    delete mediumFilter.medium;
+
+    const mediumsources = await Lead.distinct(
+      "medium",
+      mediumFilter
+    );
+
     let courses = settings?.courses || [];
 
     if (user.departments && user.departments.length > 0) {
@@ -1002,7 +1013,8 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
     res.json({
       ...result,
       statusCounts,
-      courses
+      courses,
+      mediumsources
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -1421,6 +1433,7 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
       city,
       isduplicate,
       leadSource,
+      medium
     } = req.query;
 
     const user = req.user;
@@ -1445,6 +1458,7 @@ export const exportLeads = async (req: AuthRequest, res: Response) => {
 
     // 🔹 Optional filters
     if (leadSource) filter.leadSource = leadSource;
+    if (medium) filter.medium = medium;
     if (status) filter.status = status;
     if (country) filter.country = country;
     if (state) filter.state = state;
