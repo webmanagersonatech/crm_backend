@@ -3,6 +3,10 @@ import mongoose, { Document, Schema } from 'mongoose'
 /* ============================
    FIELD SCHEMA
 ============================ */
+export interface IShowWhen {
+  field: string
+  value: string | string[]
+}
 
 export interface ISectionField {
   fieldName: string
@@ -14,6 +18,7 @@ export interface ISectionField {
   options?: string[]
   multiple?: boolean
   declarationText?: string
+  showWhen?: IShowWhen
   searchNumber?: string
 }
 
@@ -28,7 +33,11 @@ const SectionFieldSchema = new Schema<ISectionField>(
     maxLength: { type: Number },
     multiple: { type: Boolean, default: false },
     declarationText: { type: String },
-    searchNumber: { type: String }
+    searchNumber: { type: String },
+    showWhen: {
+      field: { type: String },
+      value: { type: Schema.Types.Mixed }
+    }
   },
   { _id: false }
 )

@@ -16,6 +16,10 @@ export const createFormManagerSchema = Joi.object({
           required: Joi.boolean().optional(),
           options: Joi.array().items(Joi.string()).optional(),
           searchNumber: Joi.string().optional().allow(""),
+          showWhen: Joi.object({
+            field: Joi.string().required().allow(),
+            value: Joi.any().required()
+          }).optional(),
           multiple: Joi.boolean().optional(),
           declarationText: Joi.string().when('type', {  // ADD THIS
             is: 'declaration',
@@ -40,6 +44,10 @@ export const createFormManagerSchema = Joi.object({
           maxLength: Joi.number().optional(),
           options: Joi.array().items(Joi.string()).optional(),
           searchNumber: Joi.string().optional().allow(""),
+          showWhen: Joi.object({
+            field: Joi.string().required(),
+            value: Joi.any().required()
+          }).optional(),
           multiple: Joi.boolean().optional(),
           declarationText: Joi.string().when('type', {  // ADD THIS
             is: 'declaration',
