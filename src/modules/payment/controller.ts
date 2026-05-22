@@ -48,10 +48,10 @@ const encryptCCAvenue = (
 const merchantId = "4444425";
 
 const accessCode =
-  "ATAJ92NE34AY60JAYA";
+  "ATJA06NE99BU41AJUB";
 
 const workingKey =
-  "281F1CB84E87ED2D191120C04DE37A44";
+  "ECD16C266F04D4A78ABDB5B2395ECB0B";
 // CCAvenue Decrypt
 
 
@@ -98,6 +98,7 @@ export const createCCAvenuePayment = async (
 
     const student = req.student;
 
+
     if (!student) {
       return res.status(401).json({
         message: "Unauthorized",
@@ -124,7 +125,10 @@ export const createCCAvenuePayment = async (
 
     const totalAmount =
       baseAmount + gst;
-
+    console.log("Base Amount:", baseAmount);
+    console.log("GST %:", gstPercentage);
+    console.log("GST Amount:", gst);
+    console.log("Total Amount:", totalAmount);
     const orderId =
       `CCA_${Date.now()}`;
 
@@ -143,14 +147,41 @@ export const createCCAvenuePayment = async (
 
 
 
+    // const paymentData = {
+    //   merchant_id: merchantId.toString(),
+
+    //   order_id: orderId,
+
+    //   currency: "INR",
+
+    //   amount: totalAmount.toString(),
+
+    //   redirect_url:
+    //     "https://hikabackend.sonastar.com/api/payments/ccavenue/success",
+
+    //   cancel_url:
+    //     "https://hikabackend.sonastar.com/api/payments/ccavenue/cancel",
+
+    //   language: "EN",
+
+    //   billing_name:
+    //     `${student.firstname} ${student.lastname}`,
+
+    //   billing_email:
+    //     student.email,
+
+    //   billing_tel:
+    //     student.mobileNo,
+    // };
+
     const paymentData = {
-      merchant_id: merchantId.toString(),
+      merchant_id: merchantId,
 
       order_id: orderId,
 
       currency: "INR",
 
-      amount: totalAmount.toString(),
+      amount: totalAmount.toFixed(2),
 
       redirect_url:
         "https://hikabackend.sonastar.com/api/payments/ccavenue/success",
@@ -164,20 +195,47 @@ export const createCCAvenuePayment = async (
         `${student.firstname} ${student.lastname}`,
 
       billing_email:
-        student.email,
+        student.email?.toLowerCase(),
 
       billing_tel:
         student.mobileNo,
-    };
 
+      billing_address:
+        student.address || "Salem",
+
+      billing_city:
+        student.city || "Salem",
+
+      billing_state:
+        student.state || "Tamil Nadu",
+
+      billing_zip:
+        student.pincode || "636001",
+
+      billing_country:
+        student.country || "India",
+    };
+    console.log("====================================");
+    console.log("RAW PAYMENT DATA");
+    console.log(paymentData);
     const data =
       qs.stringify(paymentData);
+
+    console.log("====================================");
+    console.log("STRINGIFIED DATA");
+    console.log(data);
+    console.log("====================================");
 
     const encryptedData =
       encryptCCAvenue(
         data,
         workingKey
       );
+
+    console.log("====================================");
+    console.log("ENCRYPTED DATA");
+    console.log(encryptedData);
+    console.log("====================================");
 
     return res.json({
       success: true,
