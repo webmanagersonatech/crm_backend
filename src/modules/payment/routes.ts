@@ -8,6 +8,9 @@ import {
   verifyInstamojoRedirect,
   instamojoWebhook,
   listPayments,
+  createCCAvenuePayment,
+  ccavenueCancel,
+  ccavenueSuccess,
   razorpayWebhook,
 } from "./controller";
 
@@ -21,7 +24,21 @@ router.post("/razorpay/webhook", razorpayWebhook);
 router.post("/instamojo/create", studentProtect, createInstamojoPayment);
 router.get("/instamojo/redirect", verifyInstamojoRedirect); // browser redirect
 router.post("/instamojo/webhook", instamojoWebhook); // server to server
+router.post(
+  "/ccavenue/create",
+  studentProtect,
+  createCCAvenuePayment
+);
 
+router.post(
+  "/ccavenue/success",
+  ccavenueSuccess
+);
+
+router.post(
+  "/ccavenue/cancel",
+  ccavenueCancel
+);
 // 👨‍💼 Admin
 router.get("/", protect, listPayments);
 

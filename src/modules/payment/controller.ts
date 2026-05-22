@@ -6,15 +6,308 @@ import Payment from "./model";
 import Settings from "../settings/model";
 import Application from "../applications/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
+import qs from "querystring";
 
-// const razorpay = new Razorpay({
-//   key_id: process.env.RAZORPAY_KEY_ID!,
-//   key_secret: process.env.RAZORPAY_KEY_SECRET!,
-// });
 
-// ========================================================
-// RAZORPAY CREATE
-// ========================================================
+// CCAvenue encrypt
+
+const encryptCCAvenue = (
+  plainText: string,
+  workingKey: string
+) => {
+
+  const key = crypto
+    .createHash("md5")
+    .update(workingKey)
+    .digest();
+
+  const iv = Buffer.from([
+    0x00, 0x01, 0x02, 0x03,
+    0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0a, 0x0b,
+    0x0c, 0x0d, 0x0e, 0x0f,
+  ]);
+
+  const cipher = crypto.createCipheriv(
+    "aes-128-cbc",
+    key,
+    iv
+  );
+
+  let encrypted = cipher.update(
+    plainText,
+    "utf8",
+    "hex"
+  );
+
+  encrypted += cipher.final("hex");
+
+  return encrypted;
+};
+
+const merchantId = "4444425";
+
+const accessCode =
+  "ATAJ92NE34AY60JAYA";
+
+const workingKey =
+  "281F1CB84E87ED2D191120C04DE37A44";
+// CCAvenue Decrypt
+
+
+const decryptCCAvenue = (
+  encryptedText: string,
+  workingKey: string
+) => {
+
+  const key = crypto
+    .createHash("md5")
+    .update(workingKey)
+    .digest();
+
+  const iv = Buffer.from([
+    0x00, 0x01, 0x02, 0x03,
+    0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0a, 0x0b,
+    0x0c, 0x0d, 0x0e, 0x0f,
+  ]);
+
+  const decipher = crypto.createDecipheriv(
+    "aes-128-cbc",
+    key,
+    iv
+  );
+
+  let decrypted = decipher.update(
+    encryptedText,
+    "hex",
+    "utf8"
+  );
+
+  decrypted += decipher.final("utf8");
+
+  return decrypted;
+};
+export const createCCAvenuePayment = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+
+    const { applicationId } = req.body;
+
+    const student = req.student;
+
+    if (!student) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const settings = await Settings.findOne({
+      instituteId: student.instituteId,
+    });
+
+    if (!settings) {
+      return res.status(400).json({
+        message: "Settings not configured",
+      });
+    }
+
+    const baseAmount = settings.applicationFee;
+
+    const gstPercentage =
+      settings.gstPercentage || 0;
+
+    const gst =
+      (baseAmount * gstPercentage) / 100;
+
+    const totalAmount =
+      baseAmount + gst;
+
+    const orderId =
+      `CCA_${Date.now()}`;
+
+    // SAVE PAYMENT
+    await Payment.create({
+      studentId: student.studentId,
+      applicationId,
+      amount: baseAmount,
+      gstAmount: gst,
+      totalAmount,
+      instituteId: student.instituteId,
+      orderId,
+      status: "pending",
+      gateway: "ccavenue",
+    });
+
+
+
+    const paymentData = {
+      merchant_id: merchantId.toString(),
+
+      order_id: orderId,
+
+      currency: "INR",
+
+      amount: totalAmount.toString(),
+
+      redirect_url:
+        "https://hikabackend.sonastar.com/api/payments/ccavenue/success",
+
+      cancel_url:
+        "https://hikabackend.sonastar.com/api/payments/ccavenue/cancel",
+
+      language: "EN",
+
+      billing_name:
+        `${student.firstname} ${student.lastname}`,
+
+      billing_email:
+        student.email,
+
+      billing_tel:
+        student.mobileNo,
+    };
+
+    const data =
+      qs.stringify(paymentData);
+
+    const encryptedData =
+      encryptCCAvenue(
+        data,
+        workingKey
+      );
+
+    return res.json({
+      success: true,
+
+      gateway: "ccavenue",
+
+      accessCode: accessCode,
+
+      merchantId: merchantId,
+
+      encryptedData,
+    });
+
+  } catch (error) {
+
+    console.log(
+      "CCAvenue Create Error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "CCAvenue payment creation failed",
+    });
+  }
+};
+
+export const ccavenueSuccess = async (
+  req: Request,
+  res: Response
+) => {
+
+  try {
+
+    const encResp = req.body.encResp;
+
+    if (!encResp) {
+      return res.status(400).send(
+        "encResp missing"
+      );
+    }
+
+    const settings =
+      await Settings.findOne();
+
+    if (!settings) {
+      return res.status(400).send(
+        "Settings missing"
+      );
+    }
+
+    const decryptedData =
+      decryptCCAvenue(
+        encResp,
+        workingKey
+      );
+
+    const responseData: any =
+      qs.parse(decryptedData);
+
+    const orderStatus =
+      responseData.order_status;
+
+    const orderId =
+      responseData.order_id;
+
+    const trackingId =
+      responseData.tracking_id;
+
+    // SUCCESS
+    if (
+      orderStatus === "Success"
+    ) {
+
+      const payment: any =
+        await Payment.findOneAndUpdate(
+          { orderId },
+          {
+            status: "paid",
+            paymentId: trackingId,
+          },
+          { new: true }
+        );
+
+      if (payment) {
+
+        await Application.findOneAndUpdate(
+          {
+            applicationId:
+              payment.applicationId,
+          },
+          {
+            paymentStatus: "Paid",
+          }
+        );
+      }
+
+      return res.redirect(
+        `https://hikaapp.sonastar.com/payment?status=success&orderId=${orderId}`
+      );
+    }
+
+    // FAILED
+    return res.redirect(
+      `https://hikaapp.sonastar.com/payment?status=failed&orderId=${orderId}`
+    );
+
+  } catch (error) {
+
+    console.log(
+      "CCAvenue Success Error:",
+      error
+    );
+
+    return res.status(500).send(
+      "CCAvenue verification failed"
+    );
+  }
+};
+
+export const ccavenueCancel = async (
+  req: Request,
+  res: Response
+) => {
+
+  return res.redirect(
+    `https://hikaapp.sonastar.com/payment?status=cancelled`
+  );
+};
+
 export const createRazorpayPayment = async (
   req: StudentAuthRequest,
   res: Response
