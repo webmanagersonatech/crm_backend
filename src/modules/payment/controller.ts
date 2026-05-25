@@ -48,10 +48,10 @@ const encryptCCAvenue = (
 const merchantId = "4444425";
 
 const accessCode =
-  "ATJA06NE99BU41AJUB";
+  "AVPD92NE73BU04DPUB";
 
 const workingKey =
-  "ECD16C266F04D4A78ABDB5B2395ECB0B";
+  "A3E677B669EA7384BB6975849E0B6E10";
 // CCAvenue Decrypt
 
 
