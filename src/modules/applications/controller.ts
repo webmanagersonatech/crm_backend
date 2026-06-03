@@ -1025,6 +1025,9 @@ export const createApplicationByStudent = async (
   res: Response
 ) => {
   try {
+    console.log("CONTENT TYPE =>", req.headers["content-type"]);
+    console.log("BODY =>", req.body);
+    console.log("FILES =>", req.files);
     // Parse JSON fields
     const personalDetails =
       typeof req.body.personalDetails === "string"
