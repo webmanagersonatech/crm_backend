@@ -14,6 +14,8 @@ export const createFormManagerSchema = Joi.object({
           minLength: Joi.number().optional(),
           maxLength: Joi.number().optional(),
           required: Joi.boolean().optional(),
+          minValue: Joi.number().optional(),   // ADD
+          maxValue: Joi.number().optional(),
           options: Joi.array().items(Joi.string()).optional(),
           searchNumber: Joi.string().optional().allow(""),
           showWhen: Joi.object({
@@ -42,6 +44,8 @@ export const createFormManagerSchema = Joi.object({
           required: Joi.boolean().optional(),
           minLength: Joi.number().optional(),
           maxLength: Joi.number().optional(),
+          minValue: Joi.number().optional(),   // ADD
+          maxValue: Joi.number().optional(),
           options: Joi.array().items(Joi.string()).optional(),
           searchNumber: Joi.string().optional().allow(""),
           showWhen: Joi.object({
