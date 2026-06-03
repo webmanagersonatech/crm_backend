@@ -1025,10 +1025,7 @@ export const createApplicationByStudent = async (
   res: Response
 ) => {
   try {
-    console.log("CONTENT TYPE =>", req.headers["content-type"]);
-    console.log("BODY =>", req.body);
-    console.log("FILES =>", req.files);
-    // Parse JSON fields
+
     const personalDetails =
       typeof req.body.personalDetails === "string"
         ? JSON.parse(req.body.personalDetails)
@@ -1140,7 +1137,10 @@ export const createApplicationByStudent = async (
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
-    const student = await Student.findOne({ email });
+    const student = await Student.findOne({
+      email,
+      instituteId,
+    });
     if (!student) {
       return res
         .status(404)
