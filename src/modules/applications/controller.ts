@@ -1302,8 +1302,7 @@ export const createApplicationByStudent = async (
         overallCutoff
       });
 
-      // Link student to this new application
-      student.applicationId = application.applicationId;
+      student.applicationId = application?.applicationId;
       student.country = country;
       student.state = state;
       student.city = city;
