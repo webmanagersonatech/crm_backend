@@ -23,6 +23,8 @@ export interface IStudent extends Document {
   academicYear?: string;
   interactions?: string;
   admissionQuota?: string;
+  admissionNumber?: string;
+  classSection?: string;
   admissionUniversityRegNo?: string;
   internshipType?: string;
   internshipCompany?: string;
@@ -68,6 +70,14 @@ const StudentSchema = new Schema<IStudent>(
     city: { type: String, },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     admissionQuota: { type: String },
+    admissionNumber: {
+      type: String,
+      unique: true,
+      sparse: true, // optional
+    },
+    classSection: {
+      type: String,
+    },
     admissionUniversityRegNo: { type: String, unique: true },
     internshipType: { type: String },
     internshipCompany: { type: String },

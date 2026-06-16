@@ -784,19 +784,42 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-
-    // Remove empty enum values to avoid validation errors
     if (updates.feedbackRating === "") delete updates.feedbackRating;
+
+    // Current student
+    const currentStudent = await Student.findById(id).select("instituteId");
+
+    if (!currentStudent) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Duplicate admission number check within same institute
+    if (updates.admissionNumber) {
+      const existingStudent = await Student.findOne({
+        instituteId: currentStudent.instituteId,
+        admissionNumber: updates.admissionNumber,
+        _id: { $ne: id },
+      });
+
+      if (existingStudent) {
+        return res.status(400).json({
+          success: false,
+          message: `Admission Number ${updates.admissionNumber} already exists`,
+        });
+      }
+    }
 
     const updatedStudent = await Student.findByIdAndUpdate(
       id,
       { $set: updates },
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     );
-
-    if (!updatedStudent) {
-      return res.status(404).json({ message: "Student not found" });
-    }
 
     res.status(200).json({
       success: true,
@@ -805,7 +828,11 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("Error updating student cleanup data:", err);
-    res.status(500).json({ message: err.message || "Internal server error" });
+
+    res.status(500).json({
+      success: false,
+      message: err.message || "Internal server error",
+    });
   }
 };
 
