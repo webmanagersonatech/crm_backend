@@ -26,6 +26,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import summerCampRoutes from './modules/summercamp/routes';
 import mattrainingRoutes from './modules/mat-coaching-center/routes'
+import feeConfigurationRoutes from './modules/fee-configuartion/routes';
 
 dotenv.config();
 
@@ -79,6 +80,7 @@ app.use('/api/dynamic-form-manage', dynamicformRoutes);
 app.use('/api/email-templates', emailtemplateRoutes);
 app.use('/api/summercamp', summerCampRoutes);
 app.use('/api/mat-training', mattrainingRoutes);
+app.use('/api/fee-configuration', feeConfigurationRoutes);
 app.use('/api/ciicp', ciicpRoutes);
 app.use('/api/captcha', captchaRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));

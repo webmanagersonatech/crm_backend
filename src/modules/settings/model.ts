@@ -24,6 +24,7 @@ export interface ISettings extends Document {
   applicationFee: number;
   academicYear: string;
   applicantAge: number;
+  courseYears?: number
   batchName?: string;
   isApplicationOpen?: boolean;
 }
@@ -61,7 +62,10 @@ const SettingsSchema = new Schema<ISettings>(
       min: 0,
       max: 100,
     },
-
+    courseYears: {
+      type: Number,
+      required: true,
+    },
     applicantAge: {
       type: Number,
       required: true,

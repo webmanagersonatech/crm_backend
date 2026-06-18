@@ -62,6 +62,16 @@ export const settingsSchema = Joi.object({
   applicantAge: Joi.number().integer().min(1).max(100).required(),
 
   academicYear: Joi.string().required(),
+  courseYears: Joi.number()
+    .integer()
+    .valid(1, 2, 3, 4, 5, 6)
+    .required()
+    .messages({
+      'number.base': 'Course years must be a number',
+      'any.only': 'Course years must be 1, 2, 3, or 4',
+      'any.required': 'Course years is required',
+    }),
+
 
   batchName: Joi.string().allow('').optional(),
 
