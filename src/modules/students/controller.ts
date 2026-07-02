@@ -518,7 +518,13 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
     if (academicYear !== "all") query.academicYear = academicYear;
 
-
+    if (req.query.program) {
+      if (Array.isArray(req.query.program)) {
+        query.programId = { $in: req.query.program };
+      } else {
+        query.programId = req.query.program;
+      }
+    }
     // ✅ Safe Cutoff Filter
     if (startCutoff || endCutoff) {
       const min = startCutoff ? Number(startCutoff) : null;
@@ -565,8 +571,16 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     }
 
     const academicYears = await Student.distinct("academicYear", Filter)
+    const settings = await Settings.findOne({ instituteId: query.instituteId });
 
-    return res.status(200).json({ status: true, students, academicYears });
+    let courses = settings?.courses || [];
+
+    if (user.departments && user.departments.length > 0) {
+      courses = courses.filter((course: any) =>
+        user.departments.includes(course.courseId)
+      );
+    }
+    return res.status(200).json({ status: true, students, academicYears, courses: courses || [], });
   } catch (err: any) {
     console.error("List Students Error:", err);
     return res.status(500).json({
@@ -642,7 +656,13 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
     if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
     if (academicYear !== "all") query.academicYear = academicYear;
-
+    if (req.query.program) {
+      if (Array.isArray(req.query.program)) {
+        query.programId = { $in: req.query.program };
+      } else {
+        query.programId = req.query.program;
+      }
+    }
     // Location filters
     if (country !== "all") query.country = country;
     if (state !== "all") query.state = state;
