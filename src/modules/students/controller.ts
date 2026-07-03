@@ -17,6 +17,8 @@ import fs from 'fs';
 import Permission from '../permissions/model'
 import crypto from "crypto";
 import Otp from "../otp/model";
+import FeeConfiguration from "../fee-configuartion/model"
+import FeeConcession from "../fees-concession/model"
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -424,7 +426,75 @@ export const getStudent = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+export const getoverallReferralsByInstitute = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
 
+    const student = await Student.findById(id).select(
+      "firstname lastname email programId studentId instituteId"
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        message: "Student not found"
+      });
+    }
+
+    const feeConfiguration = await FeeConfiguration.findOne({
+      instituteId: student.instituteId,
+    }).select("referrals courseFeeStructure");
+
+    const matchedCourse = feeConfiguration?.courseFeeStructure?.find(
+      (course: any) =>
+        course.courseId === student.programId
+    );
+
+
+    const feeConcession = await FeeConcession.findOne({
+      studentId: student._id,
+      instituteId: student.instituteId,
+    }).select(
+      "reason referralIds counsellorName"
+    );
+
+    res.status(200).json({
+      success: true,
+      data: student,
+      courseFee: matchedCourse
+        ? {
+          courseId: matchedCourse.courseId,
+          courseName: matchedCourse.name,
+          years: matchedCourse.years.map((year: any) => ({
+            year: year.year,
+            totalAmount: year.amount,
+            installmentCount: year.installments?.length || 0,
+            installments: year.installments?.map((item: any) => ({
+              number: item.number,
+              amount: item.amount,
+              dueDate: item.dueDate
+            })) || []
+          }))
+        }
+        : null,
+
+      referrals: feeConfiguration?.referrals || [],
+      feeConcession: feeConcession || null,
+
+    });
+  } catch (err) {
+    console.error(
+      "Error getting student fee details:",
+      err
+    );
+
+    res.status(500).json({
+      message: "Internal server error"
+    });
+  }
+};
 // Get all students
 export const listStudents = async (req: AuthRequest, res: Response) => {
   try {

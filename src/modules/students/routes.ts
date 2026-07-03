@@ -18,7 +18,8 @@ import {
     getpaymentrelateddata,
     getReceiptData,
     studentLogout,
-    generateUsernamesForInstitute
+    generateUsernamesForInstitute,
+    getoverallReferralsByInstitute
 } from "./controller";
 
 const router = express.Router();
@@ -38,6 +39,11 @@ router.get("/receipt-data", studentProtect, getReceiptData);
 router.get('/export', protect, exportStudents);
 router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
 router.get("/", protect, listStudents);
+router.get(
+    '/overall-referrals/:id',
+    protect,
+    getoverallReferralsByInstitute
+);
 router.get("/:id", getStudent);
 router.get("/student/me", studentProtect, getLoggedInStudent);
 router.post(

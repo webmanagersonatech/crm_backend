@@ -219,16 +219,21 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
     const isProduction = process.env.NODE_ENV === "production";
 
     // 🍪 Set cookie
-
-
-    res.cookie("instituteId", instituteId, {
+    // ✅ Cookie options
+    const cookieOptions: any = {
       httpOnly: false,
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
-      domain: ".sonastar.com", // 🔥 ADD THIS LINE
       path: "/",
       maxAge: 24 * 60 * 60 * 1000,
-    });
+    };
+
+    // ✅ Only set domain in production
+    if (isProduction) {
+      cookieOptions.domain = ".sonastar.com";
+    }
+
+    res.cookie("instituteId", instituteId, cookieOptions);
 
     // ✅ Success
     return res.status(200).json({
@@ -288,7 +293,6 @@ export const getenquiryInstituteIdViaCookie = async (req: Request, res: Response
     const { instituteId } = req.params;
 
     const { source } = req.query;
-    console.log(source, "source")
 
     const portalURL =
       process.env.ENQUIRY_PORTAL_URL || "http://localhost:3002";

@@ -771,14 +771,18 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
 
 
-    await sendPasswordEmail(
-      email,
-      username,
-      firstname,
-      institution?.name || "Our Institution",
-      instituteId,
-      plainPassword
-    );
+    try {
+      await sendPasswordEmail(
+        email,
+        username,
+        firstname,
+        institution?.name || "Our Institution",
+        instituteId,
+        plainPassword
+      );
+    } catch (err) {
+      console.error("Email sending failed:", err);
+    }
 
     const applicantName =
       flattenedPersonalFields["Full Name"] ||
@@ -1399,12 +1403,12 @@ export const getApplicationByStudents = async (
         data: null,
       });
     }
-
     const application = await Application.findOne({
       applicationId: student.applicationId,
       studentId: student.studentId,
-    })
-      .select('-personalDetails -educationDetails');
+    }).select(
+      '-personalDetails -educationDetails -searchText -overallCutoff -country -state -city -createdBystudent'
+    );
 
     // 🟡 ApplicationId exists but record missing
     if (!application) {

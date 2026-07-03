@@ -27,6 +27,8 @@ import cookieParser from 'cookie-parser';
 import summerCampRoutes from './modules/summercamp/routes';
 import mattrainingRoutes from './modules/mat-coaching-center/routes'
 import feeConfigurationRoutes from './modules/fee-configuartion/routes';
+import tuitionFeeRoutes from './modules/tuition-payment/routes';
+import feesconcession from './modules/fees-concession/routes'
 
 dotenv.config();
 
@@ -35,7 +37,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000','https://scaleindia.in', 'https://www.tpt.edu.in', 'https://www.sonabusinessschool.com', 'https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://scaleindia.in', 'https://www.tpt.edu.in', 'https://www.sonabusinessschool.com', 'https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
     credentials: true,
 }));
 declare module 'express-session' {
@@ -82,6 +84,8 @@ app.use('/api/summercamp', summerCampRoutes);
 app.use('/api/mat-training', mattrainingRoutes);
 app.use('/api/fee-configuration', feeConfigurationRoutes);
 app.use('/api/ciicp', ciicpRoutes);
+app.use('/api/tuition-fee', tuitionFeeRoutes);
+app.use('/api/fee-concession', feesconcession);
 app.use('/api/captcha', captchaRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
 
