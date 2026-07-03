@@ -36,9 +36,26 @@ const app = express();
 app.set("trust proxy", 1);
 connectDB();
 
+// In your express app configuration
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://scaleindia.in', 'https://www.tpt.edu.in', 'https://www.sonabusinessschool.com', 'https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+    origin: [
+        'http://localhost:3000', 
+        'http://160.187.54.80:3000', 
+        'https://scaleindia.in', 
+        'https://www.tpt.edu.in', 
+        'https://www.sonabusinessschool.com', 
+        'https://www.sonatech.ac.in', 
+        'https://hika.sonastar.com', 
+        'https://hikaapp.sonastar.com', // ✅ ADD THIS
+        'https://hbikabackedn.sonastar.com', // ✅ ADD BACKEND ORIGIN
+        'http://localhost:3001', 
+        'http://160.187.54.80:3001', 
+        'http://160.187.54.80:3002', 
+        'http://localhost:3002'
+    ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
 }));
 declare module 'express-session' {
     interface SessionData {
