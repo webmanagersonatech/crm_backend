@@ -148,10 +148,11 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
 // BACKEND: Update your cookie settings
 
 
+
 export const getInstituteIdViaCookies = async (
   req: Request,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const { instituteId } = req.params;
 
@@ -180,6 +181,7 @@ export const getInstituteIdViaCookies = async (
 
     const isProduction = process.env.NODE_ENV === "production";
 
+    // Set institute cookie
     res.cookie("instituteId", instituteId, {
       domain: isProduction ? ".sonastar.com" : undefined,
       path: "/",
@@ -189,7 +191,9 @@ export const getInstituteIdViaCookies = async (
       sameSite: isProduction ? "none" : "lax",
     });
 
-    console.log("Cookie set:", instituteId);
+    console.log("NODE_ENV:", process.env.NODE_ENV);
+    console.log("Cookie Set:", instituteId);
+    console.log("Set-Cookie Header:", res.getHeader("Set-Cookie"));
 
     return res.status(200).json({
       success: true,
@@ -198,8 +202,8 @@ export const getInstituteIdViaCookies = async (
         instituteId,
       },
     });
-  } catch (error) {
-    console.error("getInstituteIdViaCookies:", error);
+  } catch (error: any) {
+    console.error("getInstituteIdViaCookies Error:", error);
 
     return res.status(500).json({
       success: false,
