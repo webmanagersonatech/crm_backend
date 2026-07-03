@@ -147,7 +147,11 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
 
 // BACKEND: Update your cookie settings
 
-export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
+
+export const getInstituteIdViaCookies = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { instituteId } = req.params;
 
@@ -170,50 +174,33 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
     if (institution.status !== "active") {
       return res.status(403).json({
         success: false,
-        message: "Institute is inactive. Please contact admin",
+        message: "Institute is inactive. Please contact admin.",
       });
     }
 
     const isProduction = process.env.NODE_ENV === "production";
 
-    // ✅ FIXED: Properly typed cookie options
-    const cookieOptions = {
-      httpOnly: false,
-      secure: isProduction, // true in production
-      sameSite: 'lax' as const, // ✅ TypeScript literal type
-      path: '/',
+    res.cookie("instituteId", instituteId, {
+      domain: isProduction ? ".sonastar.com" : undefined,
+      path: "/",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      domain: '.sonastar.com',
-    };
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+    });
 
-    // For production with cross-subdomain
-    if (isProduction) {
-      res.cookie('instituteId', instituteId, {
-        ...cookieOptions,
-        // For cross-subdomain, use 'none' with secure: true
-        sameSite: 'none' as const,
-        secure: true,
-      });
-    } else {
-      // For development
-      res.cookie('instituteId', instituteId, {
-        httpOnly: false,
-        secure: false,
-        sameSite: 'lax' as const,
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        // No domain in development
-      });
-    }
+    console.log("Cookie set:", instituteId);
 
     return res.status(200).json({
       success: true,
       message: "Institute cookie set successfully",
-      data: { instituteId }
+      data: {
+        instituteId,
+      },
     });
+  } catch (error) {
+    console.error("getInstituteIdViaCookies:", error);
 
-  } catch (error: any) {
-    console.error("Error in getInstituteIdViaCookie:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
