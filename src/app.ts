@@ -47,7 +47,7 @@ app.use(cors({
         'https://www.sonatech.ac.in', 
         'https://hika.sonastar.com', 
         'https://hikaapp.sonastar.com', // ✅ ADD THIS
-        'https://hbikabackedn.sonastar.com', // ✅ ADD BACKEND ORIGIN
+        'https://hikabackend.sonastar.com', // ✅ ADD BACKEND ORIGIN
         'http://localhost:3001', 
         'http://160.187.54.80:3001', 
         'http://160.187.54.80:3002', 
