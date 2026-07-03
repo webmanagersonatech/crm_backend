@@ -109,45 +109,6 @@ export const getInstitution = async (req: Request, res: Response) => {
     res.status(500).json({ message: err.message });
   }
 };
-// export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
-//   try {
-//     const { instituteId } = req.params;
-
-//     if (!instituteId) {
-//       return res.status(400).json({ message: 'Institute ID is required' });
-//     }
-
-//     // Validate institute exists and is active
-//     const institution = await Institution.findOne({ instituteId, status: 'active' });
-//     if (!institution) {
-//       return res.status(404).json({ message: 'Invalid or inactive institute' });
-//     }
-
-//     // res.cookie('instituteId', instituteId, {
-//     //   httpOnly: process.env.NODE_ENV === 'production', 
-//     //   secure: process.env.NODE_ENV === 'production',   
-//     //   sameSite: 'lax',
-//     //   maxAge: 1000 * 60 * 60, // 1 hour
-//     //   path: '/', 
-//     // });
-//     res.cookie('instituteId', instituteId, {
-//       httpOnly: true,
-//       secure: true,           // must be true in HTTPS
-//       sameSite: 'none',       // required for cross-site
-//        domain: '.sonastar.com',
-//       maxAge: 1000 * 60 * 60,
-//       path: '/',
-//     });
-
-//     // Redirect to student portal
-//     const portalURL = process.env.STUDENT_PORTAL_URL || 'http://localhost:3001';
-//     res.redirect(portalURL);
-
-//   } catch (err: any) {
-//     console.error(err);
-//     res.status(500).json({ message: err.message || 'Server error' });
-//   }
-// };
 
 export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
   try {
@@ -184,11 +145,12 @@ export const getInstituteIdViaCookie = async (req: Request, res: Response) => {
 };
 
 
+// BACKEND: Update your cookie settings
+
 export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
   try {
     const { instituteId } = req.params;
 
-    // 🔍 Validate input
     if (!instituteId) {
       return res.status(400).json({
         success: false,
@@ -196,10 +158,8 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
       });
     }
 
-    // 🔍 Find institute (NO status filter here)
     const institution = await Institution.findOne({ instituteId });
 
-    // ❌ Not found
     if (!institution) {
       return res.status(404).json({
         success: false,
@@ -207,7 +167,6 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
       });
     }
 
-    // ❌ Inactive
     if (institution.status !== "active") {
       return res.status(403).json({
         success: false,
@@ -215,38 +174,29 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
       });
     }
 
-    // 🌍 Environment check
     const isProduction = process.env.NODE_ENV === "production";
 
-    // 🍪 Set cookie
-    // ✅ Cookie options
+    // ✅ FIXED: Cookie options for cross-subdomain
     const cookieOptions: any = {
-      httpOnly: false,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      httpOnly: false,        // Must be false to read in browser
+      secure: isProduction,   // true in production (HTTPS)
+      sameSite: "none",       // ⭐ CRITICAL: 'none' for cross-site
       path: "/",
       maxAge: 24 * 60 * 60 * 1000,
+      // ⭐ CRITICAL: Set domain to .sonastar.com (with dot)
+      domain: ".sonastar.com" // This allows subdomains to share cookies
     };
-
-    // ✅ Only set domain in production
-    if (isProduction) {
-      cookieOptions.domain = ".sonastar.com";
-    }
 
     res.cookie("instituteId", instituteId, cookieOptions);
 
-    // ✅ Success
     return res.status(200).json({
       success: true,
       message: "Institute cookie set successfully",
-      data: {
-        instituteId,
-      },
+      data: { instituteId }
     });
 
   } catch (error: any) {
-    console.error("Error in getInstituteIdViaCookie:", error);
-
+    console.error("Error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
