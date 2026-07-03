@@ -46,16 +46,20 @@ declare module 'express-session' {
     }
 }
 app.use(
-    session({
-        secret: "captcha-secret-key",
-        resave: false,
-        saveUninitialized: true,
-        cookie: {
-            secure: process.env.NODE_ENV === 'production', // Use secure in production
-            maxAge: 1000 * 60 * 10 // 10 minutes
-        },
-        name: 'captcha.sid' // Custom name to avoid conflicts
-    })
+  session({
+    name: "captcha.sid",
+    secret: "captcha-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      domain: ".sonastar.com",
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 1000 * 60 * 10,
+    },
+  })
 );
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "100mb" }));
