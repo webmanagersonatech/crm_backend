@@ -176,18 +176,35 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
 
     const isProduction = process.env.NODE_ENV === "production";
 
-    // ✅ FIXED: Cookie options for cross-subdomain
-    const cookieOptions: any = {
-      httpOnly: false,        // Must be false to read in browser
-      secure: isProduction,   // true in production (HTTPS)
-      sameSite: "none",       // ⭐ CRITICAL: 'none' for cross-site
-      path: "/",
-      maxAge: 24 * 60 * 60 * 1000,
-      // ⭐ CRITICAL: Set domain to .sonastar.com (with dot)
-      domain: ".sonastar.com" // This allows subdomains to share cookies
+    // ✅ FIXED: Properly typed cookie options
+    const cookieOptions = {
+      httpOnly: false,
+      secure: isProduction, // true in production
+      sameSite: 'lax' as const, // ✅ TypeScript literal type
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      domain: '.sonastar.com',
     };
 
-    res.cookie("instituteId", instituteId, cookieOptions);
+    // For production with cross-subdomain
+    if (isProduction) {
+      res.cookie('instituteId', instituteId, {
+        ...cookieOptions,
+        // For cross-subdomain, use 'none' with secure: true
+        sameSite: 'none' as const,
+        secure: true,
+      });
+    } else {
+      // For development
+      res.cookie('instituteId', instituteId, {
+        httpOnly: false,
+        secure: false,
+        sameSite: 'lax' as const,
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        // No domain in development
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -196,7 +213,7 @@ export const getInstituteIdViaCookies = async (req: Request, res: Response) => {
     });
 
   } catch (error: any) {
-    console.error("Error:", error);
+    console.error("Error in getInstituteIdViaCookie:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
