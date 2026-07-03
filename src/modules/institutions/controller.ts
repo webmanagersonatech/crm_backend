@@ -183,12 +183,12 @@ export const getInstituteIdViaCookies = async (
 
     // Set institute cookie
     res.cookie("instituteId", instituteId, {
-      domain: isProduction ? ".sonastar.com" : undefined,
+      domain: ".sonastar.com",
       path: "/",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: false,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: true,
+      sameSite: "none"
     });
 
     console.log("NODE_ENV:", process.env.NODE_ENV);
