@@ -15,7 +15,7 @@ const upload = multer({
   dest: "uploads/",
 });
 const SibApiV3Sdk = require("sib-api-v3-sdk");
-
+const VERIFY_TOKEN = "hikaverify123";
 const defaultClient = SibApiV3Sdk.ApiClient.instance;
 defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
@@ -673,6 +673,9 @@ export const createLeadfromonline = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+
 // export const updateProgramIdsForOldLeads = async (req: Request, res: Response) => {
 //   const { instituteId } = req.body;
 
@@ -811,6 +814,34 @@ export const getduplicateLeads = async (req: AuthRequest, res: Response) => {
       message: error.message,
     });
   }
+};
+
+
+
+
+export const verifyFacebookWebhook = (
+  req: Request,
+  res: Response
+) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+
+  return res.sendStatus(403);
+};
+
+export const receiveFacebookWebhook = async (
+  req: Request,
+  res: Response
+) => {
+  console.log("Facebook Webhook:", req.body);
+
+  // Ippo just acknowledge
+  return res.sendStatus(200);
 };
 
 
