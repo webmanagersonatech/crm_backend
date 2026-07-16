@@ -3,8 +3,9 @@ import FeeConcession from "./model";
 import Student from "../students/model";
 import { AuthRequest } from "../../middlewares/auth";
 import { createFeeConcessionSchema } from "./feesconcession.sanitize";
+import Permission from '../permissions/model';
+import FeeConfiguration from "../fee-configuartion/model"
 import Institution from "../institutions/model";
-
 /**
  * Create or Update Fee Concession (Upsert with Status Check)
  */
@@ -106,74 +107,479 @@ export const createFeeConcession = async (
  * List Fee Concessions with Pagination and Filters
  */
 export const listFeeConcessions = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
-    const status = (req.query.status as string) || "all";
+    const user = req.user;
 
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    // Permission Check
+    if (user.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const permission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Fee Concession Approval"
+      );
+
+      if (!permission?.view) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to view this data",
+        });
+      }
+    }
+
+    // Query Params
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const search = (req.query.search as string)?.trim() || "";
+    const status = (req.query.status as string) || "all";
+    const instituteId = req.query.instituteId as string;
+
+    // Build Query
     const query: any = {};
 
-    if (search.trim()) {
-      query.$or = [
-        { counsellorName: { $regex: search, $options: "i" } },
-        { reason: { $regex: search, $options: "i" } },
-      ];
+    if (user.role === "superadmin") {
+      if (instituteId && instituteId !== "all") {
+        query.instituteId = instituteId;
+      }
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+    } else {
+      query.instituteId = user.instituteId;
+      query.createdBy = user.id;
     }
 
     if (status !== "all") {
       query.status = status;
     }
 
+    // Enhanced Search - Now searches across student fields and counselor name
+    if (search) {
+      // First, find students that match the search criteria
+      const studentMatchQuery: any = {
+        $or: [
+          { studentId: { $regex: search, $options: "i" } },
+          { firstname: { $regex: search, $options: "i" } },
+          { lastname: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { mobileNo: { $regex: search, $options: "i" } },
+        ]
+      };
+
+      // Apply institute filter to student search if applicable
+      if (query.instituteId) {
+        studentMatchQuery.instituteId = query.instituteId;
+      }
+
+      // Find matching student IDs
+      const matchingStudents = await Student.find(studentMatchQuery)
+        .select('_id')
+        .lean();
+
+      const studentIds = matchingStudents.map((s: any) => s._id);
+
+      // Build the final search query for fee concessions
+      query.$or = [
+        // Search by counselor name
+        { counsellorName: { $regex: search, $options: "i" } },
+        // Search by reason
+        { reason: { $regex: search, $options: "i" } },
+        // Search by student ID from the matching students
+        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : [])
+      ];
+    }
+
+    // Get Fee Concessions
     const feeConcessions = await (FeeConcession as any).paginate(query, {
       page,
       limit,
-      sort: { createdAt: -1 },
+      sort: {
+        createdAt: -1,
+      },
       populate: [
         {
-          path: "studentId",
-          select: "firstname lastname studentId email mobileNo",
+          path: "student",
+          select:
+            "studentId firstname lastname applicationId programId admissionNumber classSection mobileNo email instituteId",
         },
         {
-          path: "createdBy",
-          select: "firstname lastname",
+          path: "creator",
+          select: "firstname lastname designation role",
         },
         {
-          path: "approvedBy",
-          select: "firstname lastname",
-        },
-        {
-          path: "rejectedBy",
-          select: "firstname lastname",
-        },
-        {
-          path: "cancelledBy",
-          select: "firstname lastname",
-        },
-        {
-          path: "updatedBy",
-          select: "firstname lastname",
+          path: "approver",
+          select: "firstname lastname designation role",
         },
       ],
+      lean: true,
     });
+
+    // Get all Fee Configurations
+    const feeConfigurations = await FeeConfiguration.find().lean();
+
+    const feeConfigMap = new Map();
+
+    feeConfigurations.forEach((config: any) => {
+      feeConfigMap.set(config.instituteId, config);
+    });
+
+    // Get all institutions for the students
+    const instituteIds = feeConcessions.docs
+      .map((item: any) => item.student?.instituteId)
+      .filter(Boolean);
+
+    // Get unique institute IDs
+    const uniqueInstituteIds = [...new Set(instituteIds)];
+
+    // Fetch all institutions
+    const institutions = await Institution.find({
+      instituteId: { $in: uniqueInstituteIds }
+    }).lean();
+
+    const institutionMap = new Map();
+    institutions.forEach((inst: any) => {
+      institutionMap.set(inst.instituteId, inst);
+    });
+
+    // Response
+    const docs = feeConcessions.docs.map((item: any) => {
+      const student = item.student || {};
+      const creator = item.creator || {};
+      const approver = item.approver || {};
+
+      const feeConfiguration = feeConfigMap.get(item.instituteId);
+
+      const referralMap = new Map();
+      const courseFeeMap = new Map();
+
+      feeConfiguration?.referrals?.forEach((ref: any) => {
+        referralMap.set(ref.referralId, ref);
+      });
+
+      feeConfiguration?.courseFeeStructure?.forEach((course: any) => {
+        courseFeeMap.set(course.courseId, course);
+      });
+
+      const course = courseFeeMap.get(student.programId);
+      const year = course?.years?.[0];
+
+      // Get institution from map
+      const institution = institutionMap.get(student.instituteId);
+
+      // Build referrals array
+      const referrals = (item.referralIds || []).map((id: string) => {
+        const referral = referralMap.get(id);
+        return {
+          referralId: id,
+          name: referral?.name || "",
+          percentage: referral?.percentage || 0,
+        };
+      });
+
+      // Calculate total discount percentage
+      const totalDiscountPercentage = referrals.reduce((sum: number, ref: any) => {
+        return sum + (ref.percentage || 0);
+      }, 0);
+
+      // Calculate original amount
+      const originalAmount = year?.amount || 0;
+
+      // Calculate discount amount
+      const discountAmount = (originalAmount * totalDiscountPercentage) / 100;
+
+      // Calculate final amount after discount
+      const finalAmount = originalAmount - discountAmount;
+
+      return {
+        _id: item._id,
+        student: {
+          _id: student._id,
+          studentId: student.studentId,
+          applicationId: student.applicationId,
+          programId: student.programId,
+          firstname: student.firstname,
+          lastname: student.lastname,
+          fullName: `${student.firstname ?? ""} ${student.lastname ?? ""}`.trim(),
+          email: student.email,
+          mobileNo: student.mobileNo,
+          institute: institution ? institution.name : "",
+          feeConcessiondeatils: {
+            courseId: course?.courseId || "",
+            name: course?.name || "",
+            amount: originalAmount,
+            referrals: referrals,
+            reason: item.reason,
+            counsellorName: item.counsellorName,
+            status: item.status,
+            createdAt: item.createdAt,
+            totalDiscountPercentage: totalDiscountPercentage,
+            discountAmount: discountAmount,
+            finalAmount: finalAmount
+          }
+        },
+        createdBy: creator?._id
+          ? {
+            _id: creator._id,
+            firstname: creator.firstname,
+            lastname: creator.lastname,
+            designation: creator.designation,
+            role: creator.role,
+          }
+          : null,
+        approvedBy: approver?._id
+          ? {
+            _id: approver._id,
+            firstname: approver.firstname,
+            lastname: approver.lastname,
+            designation: approver.designation,
+            role: approver.role,
+          }
+          : null,
+      };
+    });
+
+    const statsQuery: any = {};
+
+    // Apply same filters as list
+    if (user.role === "superadmin") {
+      if (instituteId && instituteId !== "all") {
+        statsQuery.instituteId = instituteId;
+      }
+    } else if (user.role === "admin") {
+      statsQuery.instituteId = user.instituteId;
+    } else {
+      statsQuery.instituteId = user.instituteId;
+      statsQuery.createdBy = user.id;
+    }
+
+    // Apply search filter also if needed for stats
+    if (search) {
+      // Reuse the same search logic for stats
+      const studentMatchQuery: any = {
+        $or: [
+          { studentId: { $regex: search, $options: "i" } },
+          { firstname: { $regex: search, $options: "i" } },
+          { lastname: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { mobileNo: { $regex: search, $options: "i" } },
+        ]
+      };
+
+      if (statsQuery.instituteId) {
+        studentMatchQuery.instituteId = statsQuery.instituteId;
+      }
+
+      const matchingStudents = await Student.find(studentMatchQuery)
+        .select('_id')
+        .lean();
+
+      const studentIds = matchingStudents.map((s: any) => s._id);
+
+      statsQuery.$or = [
+        { counsellorName: { $regex: search, $options: "i" } },
+        { reason: { $regex: search, $options: "i" } },
+        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : [])
+      ];
+    }
+
+    // Get Counts
+    const [pendingCount, approvedCount, rejectedCount, totalCount] =
+      await Promise.all([
+        FeeConcession.countDocuments({
+          ...statsQuery,
+          status: "pending",
+        }),
+        FeeConcession.countDocuments({
+          ...statsQuery,
+          status: "approved",
+        }),
+        FeeConcession.countDocuments({
+          ...statsQuery,
+          status: "rejected",
+        }),
+        FeeConcession.countDocuments(statsQuery),
+      ]);
+
+    const stats = {
+      total: totalCount,
+      pending: pendingCount,
+      approved: approvedCount,
+      rejected: rejectedCount,
+    };
 
     return res.status(200).json({
       success: true,
-      data: feeConcessions,
+      data: {
+        docs,
+        stats,
+        totalDocs: feeConcessions.totalDocs,
+        limit: feeConcessions.limit,
+        totalPages: feeConcessions.totalPages,
+        page: feeConcessions.page,
+        pagingCounter: feeConcessions.pagingCounter,
+        hasPrevPage: feeConcessions.hasPrevPage,
+        hasNextPage: feeConcessions.hasNextPage,
+        prevPage: feeConcessions.prevPage,
+        nextPage: feeConcessions.nextPage,
+      },
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("List Fee Concessions Error:", err);
 
     return res.status(500).json({
       success: false,
-      message: err.message || "Server error",
+      message: err.message || "Internal Server Error",
     });
   }
 };
+export const updateFeeConcessionStatus = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user?.id;
 
+    // Validate required fields
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee concession ID is required",
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required. Please provide 'approved' or 'rejected'",
+      });
+    }
+
+    // Validate status value
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Only 'approved' or 'rejected' are allowed",
+      });
+    }
+
+    // Check authorization
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    // Find the fee concession
+    const feeConcession = await FeeConcession.findById(id);
+
+    if (!feeConcession) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee concession not found",
+      });
+    }
+
+    // Check current status
+    if (feeConcession.status === "approved") {
+      return res.status(400).json({
+        success: false,
+        message: "Fee concession is already approved. Cannot change status.",
+      });
+    }
+
+    if (feeConcession.status === "rejected") {
+      return res.status(400).json({
+        success: false,
+        message: "Fee concession is already rejected. Cannot change status.",
+      });
+    }
+
+    // Permission Check - User should have permission to approve/reject
+    if (req.user?.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: req.user?.instituteId,
+        userId: req.user?.id,
+      });
+
+      const permission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Fee Concession Approval"
+      );
+
+      if (!permission?.edit) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to update fee concession status",
+        });
+      }
+    }
+
+    // Prepare update data based on status
+    const updateData: any = {
+      status: status,
+      updatedBy: userId,
+      updatedAt: new Date(),
+    };
+
+    // Set appropriate fields based on status
+    if (status === 'approved') {
+      updateData.approvedBy = userId;
+      updateData.approvedAt = new Date();
+      // Clear rejection fields if any
+      updateData.rejectedBy = null;
+      updateData.rejectedAt = null;
+    } else if (status === 'rejected') {
+      updateData.rejectedBy = userId;
+      updateData.rejectedAt = new Date();
+      // Clear approval fields if any
+      updateData.approvedBy = null;
+      updateData.approvedAt = null;
+    }
+
+    // Update the fee concession
+    const updatedFeeConcession = await FeeConcession.findByIdAndUpdate(
+      id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    )
+
+
+    // Return success response
+    const statusMessages = {
+      approved: "Fee concession approved successfully",
+      rejected: "Fee concession rejected successfully"
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: statusMessages[status as keyof typeof statusMessages],
+      data: updatedFeeConcession,
+    });
+
+  } catch (err: any) {
+    console.error("Update Fee Concession Status Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Internal Server Error",
+    });
+  }
+};
 /**
  * Get Single Fee Concession by ID
  */
@@ -209,173 +615,7 @@ export const getFeeConcession = async (
   }
 };
 
-/**
- * Approve Fee Concession
- */
-export const approveFeeConcession = async (
-  req: AuthRequest,
-  res: Response
-) => {
-  try {
-    const feeConcession = await FeeConcession.findById(req.params.id);
 
-    if (!feeConcession) {
-      return res.status(404).json({
-        success: false,
-        message: "Fee concession not found",
-      });
-    }
-
-    // Check if already approved
-    if (feeConcession.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        message: "Fee concession is already approved",
-      });
-    }
-
-    // Check if already rejected
-    if (feeConcession.status === "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot approve a rejected fee concession",
-      });
-    }
-
-    feeConcession.status = "approved";
-    feeConcession.approvedBy = req.user?.id;
-    feeConcession.approvedAt = new Date();
-
-    await feeConcession.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Fee concession approved successfully",
-      data: feeConcession,
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-/**
- * Reject Fee Concession
- */
-export const rejectFeeConcession = async (
-  req: AuthRequest,
-  res: Response
-) => {
-  try {
-    const feeConcession = await FeeConcession.findById(req.params.id);
-
-    if (!feeConcession) {
-      return res.status(404).json({
-        success: false,
-        message: "Fee concession not found",
-      });
-    }
-
-    // Check if already approved
-    if (feeConcession.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot reject an already approved fee concession",
-      });
-    }
-
-    // Check if already rejected
-    if (feeConcession.status === "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Fee concession is already rejected",
-      });
-    }
-
-    feeConcession.status = "rejected";
-    feeConcession.rejectedBy = req.user?.id;
-    feeConcession.rejectedAt = new Date();
-
-    await feeConcession.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Fee concession rejected successfully",
-      data: feeConcession,
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-/**
- * Cancel Fee Concession
- */
-export const cancelFeeConcession = async (
-  req: AuthRequest,
-  res: Response
-) => {
-  try {
-    const feeConcession = await FeeConcession.findById(req.params.id);
-
-    if (!feeConcession) {
-      return res.status(404).json({
-        success: false,
-        message: "Fee concession not found",
-      });
-    }
-
-    // Check if already approved
-    if (feeConcession.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot cancel an already approved fee concession",
-      });
-    }
-
-    // Check if already rejected
-    if (feeConcession.status === "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot cancel a rejected fee concession",
-      });
-    }
-
-    // Check if already cancelled
-    if (feeConcession.status === "cancelled") {
-      return res.status(400).json({
-        success: false,
-        message: "Fee concession is already cancelled",
-      });
-    }
-
-    feeConcession.status = "cancelled";
-    feeConcession.cancelledBy = req.user?.id;
-    feeConcession.cancelledAt = new Date();
-
-    await feeConcession.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Fee concession cancelled successfully",
-      data: feeConcession,
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-/**
- * Update Fee Concession (Manual Update)
- */
 export const updateFeeConcession = async (
   req: AuthRequest,
   res: Response
@@ -512,33 +752,3 @@ export const getFeeConcessionByStudent = async (
 /**
  * Get Fee Concession Statistics
  */
-export const getFeeConcessionStats = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const stats = await FeeConcession.aggregate([
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const total = await FeeConcession.countDocuments();
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        total,
-        stats,
-      },
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};

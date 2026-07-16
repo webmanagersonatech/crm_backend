@@ -14,11 +14,11 @@ export const feeConfigurationSchema = Joi.object({
             Joi.object({
               year: Joi.string().required(),
               amount: Joi.number().min(0).required(),
-
-              installments: Joi.array()
+              paymentoptions: Joi.array()
                 .items(
                   Joi.object({
-                    number: Joi.number().integer().min(1).required(),
+                    number: Joi.number().integer().min(0).required(),
+                    type: Joi.string().valid('full_payment', 'installment').required(),
                     amount: Joi.number().min(0).required(),
                     dueDate: Joi.date().required(),
                   })

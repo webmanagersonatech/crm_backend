@@ -148,15 +148,15 @@ export const createRazorpayPayment = async (
       });
     }
 
-    // Find Installment
-    const installment = yearData.installments.find(
+    // Find payment option (installment) from paymentoptions array
+    const paymentOption = yearData.paymentoptions.find(
       (item: any) => item.number === Number(installmentNumber)
     );
 
-    if (!installment) {
+    if (!paymentOption) {
       return res.status(404).json({
         success: false,
-        message: "Installment not found",
+        message: "Payment option not found",
       });
     }
 
@@ -185,8 +185,8 @@ export const createRazorpayPayment = async (
       );
     }
 
-    // Original installment amount
-    const originalAmount = installment.amount;
+    // Original payment option amount
+    const originalAmount = paymentOption.amount;
 
     // Discount amount
     const concessionAmount =
@@ -229,7 +229,7 @@ export const createRazorpayPayment = async (
       receipt: `TF${Date.now()}`,
     });
 
-    // Save Transaction
+    // Save Transaction with payment option type
     await TuitionFee.create({
       studentId: student.studentId,
       instituteId: student.instituteId,
@@ -239,7 +239,8 @@ export const createRazorpayPayment = async (
 
       academicYear: student.academicYear,
       year,
-      installmentNumber,
+      installmentNumber: paymentOption.number,
+      paymentType: paymentOption.type, // Save the type (full_payment or installment)
 
       originalAmount,
       concessionPercentage,
@@ -508,15 +509,15 @@ export const createInstamojoTuitionPayment = async (
       });
     }
 
-    // Find Installment
-    const installment = yearData.installments.find(
+    // Find payment option from paymentoptions array
+    const paymentOption = yearData.paymentoptions.find(
       (item: any) => item.number === Number(installmentNumber)
     );
 
-    if (!installment) {
+    if (!paymentOption) {
       return res.status(404).json({
         success: false,
-        message: "Installment not found",
+        message: "Payment option not found",
       });
     }
 
@@ -545,8 +546,8 @@ export const createInstamojoTuitionPayment = async (
       );
     }
 
-    // Original installment amount
-    const originalAmount = installment.amount;
+    // Original payment option amount
+    const originalAmount = paymentOption.amount;
 
     // Discount amount
     const concessionAmount =
@@ -592,7 +593,7 @@ export const createInstamojoTuitionPayment = async (
       "https://www.instamojo.com/api/1.1/payment-requests/",
       {
         amount: totalAmount.toString(),
-        purpose: `Tuition Fee - Year ${year} - Installment ${installmentNumber}`,
+        purpose: `Tuition Fee - Year ${year} - ${paymentOption.type === 'full_payment' ? 'Full Payment' : `Installment ${installmentNumber}`}`,
         buyer_name: `${student.firstname} ${student.lastname}`,
         email: student.email,
         phone: student.mobileNo,
@@ -613,7 +614,7 @@ export const createInstamojoTuitionPayment = async (
 
     const paymentRequest = response.data.payment_request;
 
-    // Save Transaction
+    // Save Transaction with payment type
     await TuitionFee.create({
       studentId: student.studentId,
       instituteId: student.instituteId,
@@ -623,7 +624,8 @@ export const createInstamojoTuitionPayment = async (
 
       academicYear: student.academicYear,
       year,
-      installmentNumber,
+      installmentNumber: paymentOption.number,
+      paymentType: paymentOption.type, // Save the type
 
       originalAmount,
       concessionPercentage,
@@ -836,15 +838,15 @@ export const createCCAvenueTuitionPayment = async (
       });
     }
 
-    // Find Installment
-    const installment = yearData.installments.find(
+    // Find payment option from paymentoptions array
+    const paymentOption = yearData.paymentoptions.find(
       (item: any) => item.number === Number(installmentNumber)
     );
 
-    if (!installment) {
+    if (!paymentOption) {
       return res.status(404).json({
         success: false,
-        message: "Installment not found",
+        message: "Payment option not found",
       });
     }
 
@@ -873,8 +875,8 @@ export const createCCAvenueTuitionPayment = async (
       );
     }
 
-    // Original installment amount
-    const originalAmount = installment.amount;
+    // Original payment option amount
+    const originalAmount = paymentOption.amount;
 
     // Discount amount
     const concessionAmount =
@@ -895,7 +897,7 @@ export const createCCAvenueTuitionPayment = async (
 
     const orderId = `CCA_TF_${Date.now()}`;
 
-    // Save Transaction
+    // Save Transaction with payment type
     await TuitionFee.create({
       studentId: student.studentId,
       instituteId: student.instituteId,
@@ -905,7 +907,8 @@ export const createCCAvenueTuitionPayment = async (
 
       academicYear: student.academicYear,
       year,
-      installmentNumber,
+      installmentNumber: paymentOption.number,
+      paymentType: paymentOption.type, // Save the type
 
       originalAmount,
       concessionPercentage,

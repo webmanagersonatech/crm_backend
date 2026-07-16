@@ -14,6 +14,12 @@ export interface IFeeConfiguration extends Document {
         amount: number;
         dueDate: Date;
       }[];
+      paymentoptions: {
+        number: number;
+        type: 'full_payment' | 'installment';
+        amount: number;
+        dueDate: Date;
+      }[];
     }[];
   }[];
 
@@ -66,27 +72,25 @@ const FeeConfigurationSchema = new Schema<IFeeConfiguration>(
               min: 0,
             },
 
-            installments: [
+            paymentoptions: [
               {
                 _id: false,
-
-                installmentId: {
-                  type: String,
-                  required: true,
-                },
-
                 number: {
                   type: Number,
                   required: true,
-                  min: 1,
+                  min: 0,  // 0 for full payment, 1+ for installments
                 },
-
+                type: {
+                  type: String,
+                  required: true,
+                  enum: ['full_payment', 'installment'],
+                  default: 'full_payment',
+                },
                 amount: {
                   type: Number,
                   required: true,
                   min: 0,
                 },
-
                 dueDate: {
                   type: Date,
                   required: true,

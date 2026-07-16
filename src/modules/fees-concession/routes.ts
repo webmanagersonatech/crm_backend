@@ -6,9 +6,8 @@ import {
   getFeeConcession,
   updateFeeConcession,
   deleteFeeConcession,
-  approveFeeConcession,
-  rejectFeeConcession,
-  cancelFeeConcession,
+  updateFeeConcessionStatus
+ 
 } from "./controller";
 
 const router = express.Router();
@@ -25,24 +24,15 @@ router.get("/", protect, listFeeConcessions);
 
 // Get Single Fee Concession
 router.get("/:id", protect, getFeeConcession);
-
+router.patch("/:id/status", protect, updateFeeConcessionStatus);
 // Update Fee Concession (Only if Pending)
 router.put("/:id", protect, updateFeeConcession);
 
 // Delete Fee Concession
 router.delete("/:id", protect, deleteFeeConcession);
 
-/**
- * Status Actions
- */
 
-// Approve
-router.patch("/:id/approve", protect, approveFeeConcession);
 
-// Reject
-router.patch("/:id/reject", protect, rejectFeeConcession);
 
-// Cancel
-router.patch("/:id/cancel", protect, cancelFeeConcession);
 
 export default router;

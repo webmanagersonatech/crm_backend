@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import Student from '../students/model';
 import Other from '../others/model'
 import Permission from '../permissions/model';
+import axios from 'axios';
 
 const upload = multer({
   dest: "uploads/",
@@ -834,14 +835,49 @@ export const verifyFacebookWebhook = (
   return res.sendStatus(403);
 };
 
+
+
 export const receiveFacebookWebhook = async (
   req: Request,
   res: Response
 ) => {
-  console.log("Facebook Webhook:", req.body);
+  try {
+    console.log("Facebook Webhook:", JSON.stringify(req.body, null, 2));
 
-  // Ippo just acknowledge
-  return res.sendStatus(200);
+    const changes = req.body.entry?.[0]?.changes?.[0];
+
+    if (changes?.field !== "leadgen") {
+      return res.sendStatus(200);
+    }
+
+    const leadId = changes.value.leadgen_id;
+
+    console.log("Lead ID:", leadId);
+
+    const response = await axios.get(
+      `https://graph.facebook.com/v25.0/${leadId}`,
+      {
+        params: {
+          access_token: process.env.FB_PAGE_ACCESS_TOKEN,
+        },
+      }
+    );
+
+    console.log("Lead Details:", response.data);
+
+    // TODO:
+    // response.data.field_data-வை parse பண்ணி
+    // உங்கள் Lead model/database-ல் save பண்ணுங்கள்.
+
+    return res.sendStatus(200);
+  } catch (error: any) {
+    console.error(
+      "Facebook Lead Error:",
+      error.response?.data || error.message
+    );
+
+    return res.sendStatus(200);
+  }
 };
 
 

@@ -35,7 +35,7 @@ export interface ITuitionFee extends Document {
   // Payment Gateway
   orderId: string;
   paymentId?: string;
-
+  paymentType?: string;
   // Payment Status
   status: TuitionFeeStatus;
   gateway: PaymentGateway;
@@ -73,6 +73,10 @@ const TuitionFeeSchema = new Schema<ITuitionFee>(
     },
 
     courseName: {
+      type: String,
+      required: true,
+    },
+    paymentType: {
       type: String,
       required: true,
     },

@@ -81,6 +81,7 @@ export const getFeeConfigurationByStudent = async (
 ) => {
   try {
     const studentId = req.student?.id;
+    const { paymentmethod } = req.query;
 
     if (!studentId) {
       return res.status(401).json({
@@ -135,7 +136,7 @@ export const getFeeConfigurationByStudent = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
-      status: "approved", // Remove this line if pending concessions should also apply
+      status: "approved",
     }).select("referralIds");
 
     // Match referral IDs with configured referrals
@@ -152,13 +153,19 @@ export const getFeeConfigurationByStudent = async (
         0
       );
     }
-
     // Get paid transactions
     const payments = await TuitionFees.find({
       studentId: student.studentId,
       instituteId: student.instituteId,
       status: "paid",
     });
+
+    const initallpaymentype =
+      payments.length > 0 ? payments[0].paymentType : null;
+    // Determine payment method
+    const selectedPaymentMethod = initallpaymentype ? initallpaymentype : paymentmethod || "full_payment";
+
+
 
     const paidMap = new Map();
 
@@ -167,33 +174,45 @@ export const getFeeConfigurationByStudent = async (
       paidMap.set(key, payment);
     });
 
-    // Build response
+    // Build response based on payment method
     const enrichedYears = courseFee.years.map((year: any) => {
       const originalAmount = year.amount;
 
-      const concessionAmount =
-        (originalAmount * concessionPercentage) / 100;
-
+      const concessionAmount = (originalAmount * concessionPercentage) / 100;
       const payableAmount = originalAmount - concessionAmount;
 
-      const installments = year.installments.map((installment: any) => {
-        const originalInstallmentAmount = installment.amount;
+      // Get payment options for this year
+      const paymentOptions = year.paymentoptions || [];
 
-        const installmentDiscount =
-          (originalInstallmentAmount * concessionPercentage) / 100;
+      // Filter payment options based on selected method
+      let filteredOptions = paymentOptions;
 
-        const payableInstallmentAmount =
-          originalInstallmentAmount - installmentDiscount;
+      if (selectedPaymentMethod === "full_payment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) => option.type === "full_payment"
+        );
+      } else if (selectedPaymentMethod === "installment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) => option.type === "installment"
+        );
+      }
 
-        const key = `${courseFee.courseId}-${year.year}-${installment.number}`;
-        const payment = paidMap.get(key);
+      // Transform payment options to match expected response format
+      const processedOptions = filteredOptions.map((option: any) => {
+        const optionKey = `${courseFee.courseId}-${year.year}-${option.number}`;
+        const payment = paidMap.get(optionKey);
+
+        // Calculate discount for this specific option
+        const optionDiscount = (option.amount * concessionPercentage) / 100;
+        const payableOptionAmount = option.amount - optionDiscount;
 
         return {
-          number: installment.number,
-          originalAmount: originalInstallmentAmount,
-          discountAmount: installmentDiscount,
-          payableAmount: payableInstallmentAmount,
-          dueDate: installment.dueDate,
+          number: option.number,
+          type: option.type,
+          originalAmount: option.amount,
+          discountAmount: optionDiscount,
+          payableAmount: payableOptionAmount,
+          dueDate: option.dueDate,
           paid: payment ? true : false,
           paidDate: payment?.paidDate || null,
           paymentId: payment?.paymentId || null,
@@ -202,11 +221,13 @@ export const getFeeConfigurationByStudent = async (
 
       return {
         year: year.year,
+
         originalAmount,
         concessionPercentage,
         concessionAmount,
         payableAmount,
-        installments,
+        paymentMethod: selectedPaymentMethod,
+        paymentOptions: processedOptions, // Changed from 'installments' to 'paymentOptions'
       };
     });
 
@@ -218,7 +239,7 @@ export const getFeeConfigurationByStudent = async (
         programId: student.programId,
         courseName: courseFee.name,
         paymentMethod: settingsDoc?.paymentMethod,
-
+        initallpaymentype,
         feeConcession: {
           referralIds: feeConcession?.referralIds || [],
           matchedReferrals,
