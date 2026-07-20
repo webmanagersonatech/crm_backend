@@ -10,7 +10,7 @@ import TuitionFee from "./model";
 import FeeConfiguration from '../fee-configuartion/model'
 import Settings from "../settings/model";
 import FeeConcession from "../fees-concession/model";
-// Types
+import Institution from "../institutions/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import { AuthRequest } from "../auth";
 // ============================================================
@@ -1161,7 +1161,7 @@ export const manualTuitionPayment = async (
     });
 
     if (existingTransaction) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         success: false,
         message: `Transaction ID "${transactionId}" already exists in the system`,
       });
@@ -1357,7 +1357,133 @@ export const manualTuitionPayment = async (
   }
 };
 
+export const getReceiptByPaymentId = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  try {
+    const { paymentId } = req.params;
 
+    if (!paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment ID is required"
+      });
+    }
+
+    // 1. Find the tuition fee payment by paymentId
+    const tuition = await TuitionFee.findOne({
+      paymentId: paymentId
+    });
+
+    if (!tuition) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found"
+      });
+    }
+
+    // 2. Fetch student details
+    const [student, settings, institution] = await Promise.all([
+      Student.findOne({
+        studentId: tuition.studentId,
+        instituteId: tuition.instituteId
+      }),
+      Settings.findOne({
+        instituteId: tuition.instituteId
+      }),
+      Institution.findOne({
+        instituteId: tuition.instituteId
+      })
+    ]);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    // 3. Prepare receipt data
+    const receiptData = {
+      // Payment Details
+      payment: {
+        id: tuition.paymentId,
+        orderId: tuition.orderId,
+        status: tuition.status,
+        gateway: tuition.gateway,
+        paidDate: tuition.paidDate || tuition.createdAt,
+        createdAt: tuition.createdAt,
+
+        // Fee Details
+        installmentNumber: tuition.installmentNumber,
+        paymentType: tuition.paymentType,
+        year: tuition.year,
+        academicYear: tuition.academicYear,
+
+        // Fee Breakdown
+        originalAmount: tuition.originalAmount,
+        concessionPercentage: tuition.concessionPercentage,
+        concessionAmount: tuition.concessionAmount,
+        amount: tuition.amount,
+        gstAmount: tuition.gstAmount,
+        totalAmount: tuition.totalAmount,
+
+        // Course Details
+        courseId: tuition.courseId,
+        courseName: tuition.courseName,
+      },
+
+      // Student Details
+      student: {
+        id: student._id,
+        studentId: student.studentId,
+        firstName: student.firstname,
+        lastName: student.lastname,
+        email: student.email,
+        mobileNo: student.mobileNo,
+
+      },
+
+      institute: {
+        name: institution?.name || 'Institute Name',
+        logo: settings?.logo || '',
+        email: institution?.email || institution?.email || '',
+        phone: institution?.phoneNo || institution?.phoneNo || '',
+
+      },
+
+      // Receipt Metadata
+      receipt: {
+        generatedAt: new Date().toISOString(),
+        receiptNumber: `RCP-${tuition.paymentId || tuition.orderId}`,
+        transactionId: tuition.orderId || tuition.paymentId,
+      }
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: receiptData
+    });
+
+  } catch (error) {
+    console.error("Get Receipt Error:", error);
+
+    // Better error handling
+    if (error instanceof Error) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch receipt details",
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch receipt details"
+    });
+  }
+};
 
 
 

@@ -11,6 +11,7 @@ import {
   ccavenueTuitionSuccess,
   ccavenueTuitionCancel,
   manualTuitionPayment,
+  getReceiptByPaymentId,
 } from "./controller";
 import { studentProtect } from "../../middlewares/studentAuth";
 import { protect } from "../../middlewares/auth";
@@ -31,5 +32,6 @@ router.post("/instamojo/webhook", instamojoTuitionWebhook);
 router.post("/create/ccavenue", studentProtect, createCCAvenueTuitionPayment);
 router.post("/ccavenue/success", ccavenueTuitionSuccess);
 router.get("/ccavenue/cancel", ccavenueTuitionCancel);
+router.get('/receipt/:paymentId', studentProtect, getReceiptByPaymentId);
 
 export default router;
