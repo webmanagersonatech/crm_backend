@@ -1356,8 +1356,7 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
     }).select("logo");
 
     const insuitelogo = settings?.logo || null;
-    
-    // Extract this logic for clarity
+
     const SPECIAL_INSTITUTE_ID = "INS-3-ZXYXKM";
     const showTuitionFeePayment = student.instituteId === SPECIAL_INSTITUTE_ID;
 
@@ -1370,7 +1369,7 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
           firstname: student.firstname,
           lastname: student.lastname,
           insuitelogo,
-          shownturtionfeepayment: showTuitionFeePayment // Note: Consider renaming to showTuitionFeePayment
+          shownturtionfeepayment: showTuitionFeePayment
         },
       }
     });
