@@ -5,7 +5,7 @@ import mongoose, { Schema, Document } from "mongoose";
 // ============================================================
 
 export type TuitionFeeStatus = "pending" | "paid" | "failed";
-export type PaymentGateway = "razorpay" | "instamojo" | "ccavenue";
+export type PaymentGateway = "razorpay" | "instamojo" | "ccavenue" | "manual";
 
 export interface ITuitionFee extends Document {
   // Student Information
@@ -39,7 +39,8 @@ export interface ITuitionFee extends Document {
   // Payment Status
   status: TuitionFeeStatus;
   gateway: PaymentGateway;
-
+  recordedBy?: string;
+  remarks?: string;
   // Dates
   paidDate?: Date;
   createdAt: Date;
@@ -158,8 +159,16 @@ const TuitionFeeSchema = new Schema<ITuitionFee>(
 
     gateway: {
       type: String,
-      enum: ["razorpay", "instamojo", "ccavenue"],
+      enum: ["razorpay", "instamojo", "ccavenue", "manual"],
       required: true,
+    },
+    remarks: {
+      type: String,
+
+    },
+    recordedBy: {
+      type: String,
+
     },
 
     // Payment Date

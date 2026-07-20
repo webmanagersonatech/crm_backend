@@ -4,7 +4,7 @@ import {
   getFeeConfigurationByInstitute,
   deleteFeeConfiguration,
   getFeeConfigurationByStudent,
-  
+  getFeeConfigurationByadmin
 } from './controller';
 import { studentProtect } from '../../middlewares/studentAuth';
 import { protect } from '../../middlewares/auth';
@@ -15,6 +15,7 @@ router.post('/', protect, upsertFeeConfiguration);
 
 
 router.get('/student', studentProtect, getFeeConfigurationByStudent);
+router.get('/admin/:studentId', protect, getFeeConfigurationByadmin);
 router.get('/:instituteId', protect, getFeeConfigurationByInstitute);
 
 router.delete('/:instituteId', protect, deleteFeeConfiguration);

@@ -13,7 +13,8 @@ import fs from "fs";
 import csv from "csv-parser";
 import Institution from '../institutions/model'
 import Permission from '../permissions/model'
-
+import FeeConcession from '../fees-concession/model'
+import TuitionFee from '../tuition-payment/model'
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
 
@@ -2414,41 +2415,103 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
   }
 }
 
-// 🗑️ Delete Application (admin/superadmin only)
+
+
 export const deleteApplication = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
-    if (!user)
+    if (!user) {
       return res.status(401).json({ success: false, message: "Not authorized" });
+    }
 
+    // Check if user has permission (admin, superAdmin, or counselor)
     if (user.role === "user") {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    // 1️⃣ Delete application
-    const application = await Application.findByIdAndDelete(req.params.id);
+    const applicationId = req.params.id;
 
-    if (!application)
-      return res
-        .status(404)
-        .json({ success: false, message: "Application not found" });
+    // 1️⃣ Find and delete the application
+    const application = await Application.findById(applicationId);
 
-    // 2️⃣ Delete related student
-    if (application.studentId) {
-      await Student.findOneAndDelete({
-        studentId: application.studentId,
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found"
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "Application and related student deleted successfully",
+    // Store studentId for later use
+    const studentId = application.studentId;
+    const instituteId = application.instituteId;
+
+    // 2️⃣ Find the student
+    const student = await Student.findOne({
+      studentId: studentId,
+      instituteId: instituteId
     });
+
+
+
+    // 3️⃣ Delete related data if student exists
+    if (student) {
+      // 3a. Delete Fee Concession records
+      const feeConcessions = await FeeConcession.find({
+        studentId: student._id,
+        instituteId: instituteId
+      });
+
+      if (feeConcessions.length > 0) {
+        const deletedConcessions = await FeeConcession.deleteMany({
+          studentId: student._id,
+          instituteId: instituteId
+        });
+
+        console.log(`🗑️ Deleted ${deletedConcessions.deletedCount} fee concession records`);
+      }
+
+      // 3b. Delete Tuition Fee records
+      const tuitionFees = await TuitionFee.find({
+        studentId: student.studentId,
+        instituteId: instituteId
+      });
+
+      if (tuitionFees.length > 0) {
+        const deletedTuition = await TuitionFee.deleteMany({
+          studentId: student.studentId,
+          instituteId: instituteId
+        });
+
+        console.log(`🗑️ Deleted ${deletedTuition.deletedCount} tuition fee records`);
+      }
+
+      await Student.findOneAndDelete({
+        studentId: studentId,
+        instituteId: instituteId
+      });
+      console.log(`🗑️ Deleted student: ${studentId}`);
+    }
+
+    // 4️⃣ Delete the application
+    await Application.findByIdAndDelete(applicationId);
+    console.log(`🗑️ Deleted application: ${applicationId}`);
+
+    // 5️⃣ Prepare response data
+    const responseData: any = {
+      success: true,
+      message: "Application, student, and all related records deleted successfully",
+
+    };
+
+    return res.status(200).json(responseData);
+
   } catch (error: any) {
     console.error("❌ Delete error:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete application and related records",
+      error: error.message
+    });
   }
 };
 

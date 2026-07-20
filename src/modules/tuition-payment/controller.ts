@@ -4,7 +4,7 @@ import Razorpay from "razorpay";
 import mongoose from "mongoose";
 import axios from "axios";
 import qs from "querystring";
-
+import Student from "../students/model";
 // Models
 import TuitionFee from "./model";
 import FeeConfiguration from '../fee-configuartion/model'
@@ -12,7 +12,7 @@ import Settings from "../settings/model";
 import FeeConcession from "../fees-concession/model";
 // Types
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
-
+import { AuthRequest } from "../auth";
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -1082,3 +1082,282 @@ export const ccavenueTuitionCancel = async (
     );
   }
 };
+
+
+// ============================================================
+// MANUAL PAYMENT BY COUNSELOR/ADMIN
+// ============================================================
+
+// ============================================================
+// MANUAL PAYMENT BY COUNSELOR/ADMIN
+// ============================================================
+
+export const manualTuitionPayment = async (
+  req: AuthRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const {
+      studentId,
+      year,
+      installmentNo,
+      amount,
+      transactionId,
+      paymentDate,
+      remarks
+    } = req.body;
+
+    // 1. Validate required fields
+    if (!studentId || !year || !installmentNo || !amount || !transactionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: studentId, year, installmentNo, amount, transactionId"
+      });
+    }
+
+    // 2. Validate user is counselor or admin
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized"
+      });
+    }
+
+
+
+
+    let student;
+
+    // Check if studentId is a valid ObjectId
+    if (mongoose.Types.ObjectId.isValid(studentId)) {
+      student = await Student.findById(studentId);
+    }
+
+    // If not found by ObjectId, try finding by studentId field
+    if (!student) {
+      student = await Student.findOne({ studentId: studentId });
+    }
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    // 4. Check if student is active
+    if (student.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        message: "Student is not active"
+      });
+    }
+    const existingTransaction = await TuitionFee.findOne({
+      $or: [
+        { paymentId: transactionId },
+        { transactionId: transactionId } // If you have a transactionId field
+      ]
+    });
+
+    if (existingTransaction) {
+      return res.status(409).json({ 
+        success: false,
+        message: `Transaction ID "${transactionId}" already exists in the system`,
+      });
+    }
+    // 5. Get Fee Configuration for this student
+    const feeConfig = await FeeConfiguration.findOne({
+      instituteId: student.instituteId
+    });
+
+    if (!feeConfig) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee configuration not found for this institute"
+      });
+    }
+
+    // 6. Find the course in fee configuration
+    const course = feeConfig.courseFeeStructure.find(
+      (item: any) => item.courseId === student.programId
+    );
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course fee not configured for this student"
+      });
+    }
+
+    // 7. Find the year data
+    const yearData = course.years.find(
+      (item: any) => item.year === String(year)
+    );
+
+    if (!yearData) {
+      return res.status(404).json({
+        success: false,
+        message: `Year ${year} fee not found for this course`
+      });
+    }
+
+    // 8. Find the payment option (installment)
+    const paymentOption = yearData.paymentoptions.find(
+      (item: any) => item.number === Number(installmentNo)
+    );
+
+    if (!paymentOption) {
+      return res.status(404).json({
+        success: false,
+        message: `Installment ${installmentNo} not found for year ${year}`
+      });
+    }
+
+    // 9. Check if this installment is already paid
+    const alreadyPaid = await TuitionFee.findOne({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      year: String(year),
+      installmentNumber: Number(installmentNo),
+      status: PAYMENT_STATUS.PAID
+    });
+
+    if (alreadyPaid) {
+      return res.status(400).json({
+        success: false,
+        message: `Installment ${installmentNo} for year ${year} is already paid`,
+        existingPayment: alreadyPaid
+      });
+    }
+
+    // 10. Calculate fee concession if applicable
+    const feeConcession = await FeeConcession.findOne({
+      studentId: new mongoose.Types.ObjectId(student._id),
+      instituteId: student.instituteId,
+      status: "approved"
+    }).select("referralIds");
+
+    let matchedReferrals: any[] = [];
+    let concessionPercentage = 0;
+
+    if (feeConcession?.referralIds?.length) {
+      matchedReferrals = feeConfig.referrals.filter((ref: any) =>
+        feeConcession.referralIds.includes(ref.referralId)
+      );
+
+      concessionPercentage = matchedReferrals.reduce(
+        (total: number, ref: any) =>
+          total + Number(ref.percentage || 0),
+        0
+      );
+    }
+
+    // Original payment option amount
+    const originalAmount = paymentOption.amount;
+
+    // Discount amount based on concession
+    const concessionAmount = (originalAmount * concessionPercentage) / 100;
+
+    // Amount after concession
+    const calculatedAmount = originalAmount - concessionAmount;
+
+    // GST (assuming 0% as per your existing code)
+    const gstAmount = 0;
+
+    // Final payable amount
+    const totalAmount = calculatedAmount + gstAmount;
+
+    // 11. Validate the amount provided matches the calculated amount
+    // You can either enforce exact match or allow override with warning
+    const amountDifference = Math.abs(Number(amount) - totalAmount);
+
+    if (amountDifference > 0.01) { // Allow 1 paisa difference
+      // Option 1: Reject with error
+      // return res.status(400).json({
+      //   success: false,
+      //   message: `Amount mismatch. Expected: ${totalAmount}, Received: ${amount}`,
+      //   calculatedAmount: totalAmount,
+      //   providedAmount: Number(amount),
+      //   concessionPercentage,
+      //   concessionAmount,
+      //   originalAmount
+      // });
+
+      // Option 2: Proceed with warning (recommended for manual adjustments)
+      console.warn(`Manual payment amount mismatch: Expected ${totalAmount}, Received ${amount} for student ${student.studentId}`);
+    }
+
+    // 12. Generate a unique order ID for manual payment
+    const orderId = `MANUAL_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    // 13. Create manual tuition fee record
+    const manualPayment = await TuitionFee.create({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      courseId: course.courseId,
+      courseName: course.name,
+      academicYear: student.academicYear,
+      year: String(year),
+      installmentNumber: Number(installmentNo),
+      paymentType: paymentOption.type || "installment",
+
+      // Fee calculation
+      originalAmount: originalAmount,
+      concessionPercentage: concessionPercentage,
+      concessionAmount: concessionAmount,
+      amount: calculatedAmount,
+      gstAmount: gstAmount,
+      totalAmount: Number(amount), // Use provided amount
+
+      // Payment details
+      orderId: orderId,
+      status: PAYMENT_STATUS.PAID,
+      gateway: "manual",
+
+      // Manual payment specific fields
+      paymentId: transactionId,
+      paidDate: paymentDate ? new Date(paymentDate) : new Date(),
+
+      // Additional metadata
+      remarks: remarks || "Manual payment by counselor",
+      paymentMethod: "manual",
+      recordedBy: user.id || user._id,
+
+
+      // Store the original calculated amount for reference
+      calculatedAmount: totalAmount,
+      amountDifference: amountDifference
+    });
+
+    // 14. Log the manual payment (optional - you can add audit logging)
+    console.log(`Manual payment recorded:`, {
+      studentId: student.studentId,
+      amount: Number(amount),
+      orderId: orderId,
+      recordedBy: user.id,
+      installmentNo: installmentNo,
+      year: year
+    });
+
+    // 15. Return success response
+    return res.status(200).json({
+      success: true,
+      message: "Manual payment recorded successfully",
+    });
+
+  } catch (error: any) {
+    console.error("Manual Tuition Payment Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to record manual payment",
+      error: error.message || "Internal server error"
+    });
+  }
+};
+
+
+
+
+

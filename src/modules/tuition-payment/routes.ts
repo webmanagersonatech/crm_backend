@@ -10,8 +10,10 @@ import {
   createCCAvenueTuitionPayment,
   ccavenueTuitionSuccess,
   ccavenueTuitionCancel,
+  manualTuitionPayment,
 } from "./controller";
 import { studentProtect } from "../../middlewares/studentAuth";
+import { protect } from "../../middlewares/auth";
 
 const router = express.Router();
 
@@ -19,7 +21,7 @@ const router = express.Router();
 router.post("/create/razorpay", studentProtect, createRazorpayPayment);
 router.post("/verify/razorpay", verifyRazorpayPayment);
 router.post("/webhook/razorpay", razorpayWebhook);
-
+router.post("/manual-payment", protect, manualTuitionPayment);
 // Instamojo Routes
 router.post("/create/instamojo", studentProtect, createInstamojoTuitionPayment);
 router.get("/instamojo/redirect", instamojoTuitionRedirect);
