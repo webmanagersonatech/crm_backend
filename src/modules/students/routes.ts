@@ -19,7 +19,8 @@ import {
     getReceiptData,
     studentLogout,
     generateUsernamesForInstitute,
-    getoverallReferralsByInstitute
+    getoverallReferralsByInstitute,
+    getStudentWithToken
 } from "./controller";
 
 const router = express.Router();
@@ -44,12 +45,14 @@ router.get(
     protect,
     getoverallReferralsByInstitute
 );
+router.get("/me", studentProtect, getStudentWithToken);
 router.get("/:id", getStudent);
 router.get("/student/me", studentProtect, getLoggedInStudent);
 router.post(
     "/generate-usernames/:instituteId",
     generateUsernamesForInstitute
 );
+
 router.get("/studentindiual/:id", studentProtect, getStudent);
 router.put("/:id", protect, updateStudentCleanupData);
 router.put("/studentindiual/:id", studentProtect, updateStudent);

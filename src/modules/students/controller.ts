@@ -1330,3 +1330,58 @@ export const deleteStudent = async (req: Request, res: Response) => {
   res.status(200).json({ success: true });
 };
 
+
+export const getStudentWithToken = async (req: StudentAuthRequest, res: Response) => {
+  try {
+    const studentId = req.student?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: No student ID found"
+      });
+    }
+
+    const student = await Student.findById(studentId).select("-password");
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    const settings = await Settings.findOne({
+      instituteId: student.instituteId,
+    }).select("logo");
+
+    const insuitelogo = settings?.logo || null;
+    
+    // Extract this logic for clarity
+    const SPECIAL_INSTITUTE_ID = "INS-3-ZXYXKM";
+    const showTuitionFeePayment = student.instituteId === SPECIAL_INSTITUTE_ID;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        student: {
+          id: student._id,
+          studentId: student.studentId,
+          firstname: student.firstname,
+          lastname: student.lastname,
+          insuitelogo,
+          shownturtionfeepayment: showTuitionFeePayment // Note: Consider renaming to showTuitionFeePayment
+        },
+      }
+    });
+
+  } catch (error: any) {
+    console.error("Error getting student with token:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error"
+    });
+  }
+};
+
+
