@@ -14,13 +14,32 @@ export const feeConfigurationSchema = Joi.object({
             Joi.object({
               year: Joi.string().required(),
               amount: Joi.number().min(0).required(),
-              paymentoptions: Joi.array()
+              tuitionFee: Joi.number().min(0).required(),
+              otherFee: Joi.number().min(0).required(),
+
+              paymentOptions: Joi.array()
                 .items(
                   Joi.object({
-                    number: Joi.number().integer().min(0).required(),
-                    type: Joi.string().valid('full_payment', 'installment').required(),
-                    amount: Joi.number().min(0).required(),
-                    dueDate: Joi.date().required(),
+                    paymentOptionId: Joi.string().required(),
+
+                    name: Joi.string().required(), // Full Payment, 2 Installments, 3 Installments
+
+                    type: Joi.string()
+                      .valid("full_payment", "installment")
+                      .required(),
+
+                    installments: Joi.array()
+                      .items(
+                        Joi.object({
+                          number: Joi.number().integer().min(1).required(),
+                          amount: Joi.number().min(0).required(),
+                          tuitionFee: Joi.number().min(0).required(),
+                          otherFee: Joi.number().min(0).required(),
+                          dueDate: Joi.date().required(),
+                        })
+                      )
+                      .min(1)
+                      .required(),
                   })
                 )
                 .default([]),

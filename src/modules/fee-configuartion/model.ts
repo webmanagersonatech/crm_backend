@@ -6,19 +6,27 @@ export interface IFeeConfiguration extends Document {
   courseFeeStructure: {
     courseId: string;
     name: string;
+
     years: {
+      yearId: string;
       year: string;
+
       amount: number;
-      installments: {
-        number: number;
-        amount: number;
-        dueDate: Date;
-      }[];
-      paymentoptions: {
-        number: number;
-        type: 'full_payment' | 'installment';
-        amount: number;
-        dueDate: Date;
+      tuitionFee: number;
+      otherFee: number;
+
+      paymentOptions: {
+        paymentOptionId: string;
+        name: string;
+        type: "full_payment" | "installment";
+
+        installments: {
+          number: number;
+          amount: number;
+          tuitionFee: number;
+          otherFee: number;
+          dueDate: Date;
+        }[];
       }[];
     }[];
   }[];
@@ -72,29 +80,72 @@ const FeeConfigurationSchema = new Schema<IFeeConfiguration>(
               min: 0,
             },
 
-            paymentoptions: [
+            tuitionFee: {
+              type: Number,
+              required: true,
+              min: 0,
+            },
+
+            otherFee: {
+              type: Number,
+              required: true,
+              min: 0,
+            },
+
+            paymentOptions: [
               {
                 _id: false,
-                number: {
-                  type: Number,
-                  required: true,
-                  min: 0,  // 0 for full payment, 1+ for installments
-                },
-                type: {
+
+                paymentOptionId: {
                   type: String,
                   required: true,
-                  enum: ['full_payment', 'installment'],
-                  default: 'full_payment',
                 },
-                amount: {
-                  type: Number,
-                  required: true,
-                  min: 0,
-                },
-                dueDate: {
-                  type: Date,
+
+                name: {
+                  type: String,
                   required: true,
                 },
+
+                type: {
+                  type: String,
+                  enum: ["full_payment", "installment"],
+                  required: true,
+                },
+
+                installments: [
+                  {
+                    _id: false,
+
+                    number: {
+                      type: Number,
+                      required: true,
+                      min: 1,
+                    },
+
+                    amount: {
+                      type: Number,
+                      required: true,
+                      min: 0,
+                    },
+
+                    tuitionFee: {
+                      type: Number,
+                      required: true,
+                      min: 0,
+                    },
+
+                    otherFee: {
+                      type: Number,
+                      required: true,
+                      min: 0,
+                    },
+
+                    dueDate: {
+                      type: Date,
+                      required: true,
+                    },
+                  },
+                ],
               },
             ],
           },

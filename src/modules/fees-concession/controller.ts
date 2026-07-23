@@ -292,14 +292,45 @@ export const listFeeConcessions = async (
         return sum + (ref.percentage || 0);
       }, 0);
 
-      // Calculate original amount
-      const originalAmount = year?.amount || 0;
+      // Get tuition fee and other fee from the year
+      const tuitionFee = year?.tuitionFee || 0;
+      const otherFee = year?.otherFee || 0;
+      const originalAmount = tuitionFee + otherFee;
 
-      // Calculate discount amount
-      const discountAmount = (originalAmount * totalDiscountPercentage) / 100;
+      // Calculate discount amount - ONLY ON TUITION FEE
+      const discountAmount = (tuitionFee * totalDiscountPercentage) / 100;
 
-      // Calculate final amount after discount
-      const finalAmount = originalAmount - discountAmount;
+      // Calculate discounted tuition fee
+      const discountedTuition = tuitionFee - discountAmount;
+
+      // Final amount = discounted tuition + other fee (other fee remains static)
+      const finalAmount = discountedTuition + otherFee;
+
+      // Get payment option details from fee configuration
+      let paymentOption = null;
+      if (item.paymentOptionId && feeConfiguration) {
+        // Find the payment option from the course structure
+        const courseWithPayment = feeConfiguration.courseFeeStructure?.find(
+          (c: any) => c.courseId === student.programId
+        );
+
+        if (courseWithPayment) {
+          const yearData = courseWithPayment.years?.[0];
+          if (yearData) {
+            const foundOption = yearData.paymentOptions?.find(
+              (opt: any) => opt.paymentOptionId === item.paymentOptionId
+            );
+            if (foundOption) {
+              paymentOption = {
+                paymentOptionId: foundOption.paymentOptionId,
+                name: foundOption.name,
+                type: foundOption.type,
+                installmentCount: foundOption.installments?.length || 0
+              };
+            }
+          }
+        }
+      }
 
       return {
         _id: item._id,
@@ -318,14 +349,26 @@ export const listFeeConcessions = async (
             courseId: course?.courseId || "",
             name: course?.name || "",
             amount: originalAmount,
+            tuitionFee: tuitionFee,
+            otherFee: otherFee,
+            discountedTuition: discountedTuition,
+            discountAmount: discountAmount,
+            totalDiscountPercentage: totalDiscountPercentage,
+            finalAmount: finalAmount,
             referrals: referrals,
             reason: item.reason,
             counsellorName: item.counsellorName,
             status: item.status,
             createdAt: item.createdAt,
-            totalDiscountPercentage: totalDiscountPercentage,
-            discountAmount: discountAmount,
-            finalAmount: finalAmount
+            paymentOptionId: item.paymentOptionId || null, // ADDED: payment option ID
+            paymentOption: paymentOption, // ADDED: full payment option details
+            breakdown: {
+              tuitionFee: tuitionFee,
+              otherFee: otherFee,
+              discountApplied: `-₹${discountAmount.toLocaleString()} (${totalDiscountPercentage}% on tuition)`,
+              finalTuition: discountedTuition,
+              finalTotal: finalAmount
+            }
           }
         },
         createdBy: creator?._id
@@ -493,20 +536,7 @@ export const updateFeeConcessionStatus = async (
       });
     }
 
-    // Check current status
-    if (feeConcession.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        message: "Fee concession is already approved. Cannot change status.",
-      });
-    }
 
-    if (feeConcession.status === "rejected") {
-      return res.status(400).json({
-        success: false,
-        message: "Fee concession is already rejected. Cannot change status.",
-      });
-    }
 
     // Permission Check - User should have permission to approve/reject
     if (req.user?.role !== "superadmin") {

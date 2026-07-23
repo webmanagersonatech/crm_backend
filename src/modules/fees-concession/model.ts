@@ -8,7 +8,7 @@ export interface IFeeConcession extends Document {
   reason: string;
   referralIds: string[];
   counsellorName: string;
-
+  paymentOptionId?: string;
   status: "pending" | "approved" | "rejected" | "cancelled";
 
   approvedBy?: mongoose.Types.ObjectId;
@@ -37,6 +37,10 @@ const FeeConcessionSchema = new Schema<IFeeConcession>(
       type: String,
       required: true,
       trim: true,
+    },
+
+    paymentOptionId: {
+      type: String,
     },
 
     referralIds: [

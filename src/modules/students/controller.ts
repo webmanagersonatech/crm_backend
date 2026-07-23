@@ -452,38 +452,51 @@ export const getoverallReferralsByInstitute = async (
         course.courseId === student.programId
     );
 
-
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
     }).select(
-      "reason referralIds counsellorName"
+      "reason referralIds counsellorName paymentOptionId"
     );
+
+    // Build course fee response
+    let courseFeeResponse = null;
+
+    if (matchedCourse) {
+      courseFeeResponse = {
+        courseId: matchedCourse.courseId,
+        courseName: matchedCourse.name,
+        years: matchedCourse.years.map((year: any) => {
+          // Filter out "Full Payment" and only keep installment options
+          const installmentOptions = year.paymentOptions?.filter(
+            (option: any) => option.type === 'installment'
+          ) || [];
+
+          // Map to only return name and paymentOptionId
+          const paymentOptions = installmentOptions.map((option: any) => ({
+            name: option.name,
+            value: option.paymentOptionId
+          }));
+
+          return {
+            year: year.year,
+            totalAmount: year.amount,
+            tuitionFee: year.tuitionFee,
+            otherFee: year.otherFee,
+            paymentOptions: paymentOptions
+          };
+        })
+      };
+    }
 
     res.status(200).json({
       success: true,
       data: student,
-      courseFee: matchedCourse
-        ? {
-          courseId: matchedCourse.courseId,
-          courseName: matchedCourse.name,
-          years: matchedCourse.years.map((year: any) => ({
-            year: year.year,
-            totalAmount: year.amount,
-            installmentCount: year.installments?.length || 0,
-            installments: year.installments?.map((item: any) => ({
-              number: item.number,
-              amount: item.amount,
-              dueDate: item.dueDate
-            })) || []
-          }))
-        }
-        : null,
-
+      courseFee: courseFeeResponse,
       referrals: feeConfiguration?.referrals || [],
       feeConcession: feeConcession || null,
-
     });
+
   } catch (err) {
     console.error(
       "Error getting student fee details:",

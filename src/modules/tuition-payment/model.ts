@@ -31,7 +31,14 @@ export interface ITuitionFee extends Document {
   amount: number;
   gstAmount: number;
   totalAmount: number;
+  paymentOptionId?: string;
+  paymentOptionName?: string;
 
+  // Fee Breakdown
+  tuitionFee?: number;
+  otherFee?: number;
+  tuitionConcession?: number;
+  otherFeeConcession?: number;
   // Payment Gateway
   orderId: string;
   paymentId?: string;
@@ -99,7 +106,30 @@ const TuitionFeeSchema = new Schema<ITuitionFee>(
       type: Number,
       required: true,
     },
+    paymentOptionId: {
+      type: String,
+    },
+    paymentOptionName: {
+      type: String,
+    },
 
+    // Fee Breakdown
+    tuitionFee: {
+      type: Number,
+      default: 0,
+    },
+    otherFee: {
+      type: Number,
+      default: 0,
+    },
+    tuitionConcession: {
+      type: Number,
+      default: 0,
+    },
+    otherFeeConcession: {
+      type: Number,
+      default: 0,
+    },
     // Original Installment Amount
     originalAmount: {
       type: Number,
