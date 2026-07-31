@@ -20,6 +20,7 @@ import {
     studentLogout,
     generateUsernamesForInstitute,
     getoverallReferralsByInstitute,
+    reshareCredentials,
     getStudentWithToken
 } from "./controller";
 
@@ -44,6 +45,11 @@ router.get(
     '/overall-referrals/:id',
     protect,
     getoverallReferralsByInstitute
+);
+router.post(
+    '/reshare-credentials/:studentId',
+    protect,
+    reshareCredentials
 );
 router.get("/me", studentProtect, getStudentWithToken);
 router.get("/:id", getStudent);

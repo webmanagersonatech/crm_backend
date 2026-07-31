@@ -409,6 +409,93 @@ export const studentLogout = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const reshareCredentials = async (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required"
+      });
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    const institution = await Institution.findOne({
+      instituteId: student.instituteId
+    });
+    if (!institution) {
+      return res.status(404).json({
+        success: false,
+        message: "Institution not found"
+      });
+    }
+
+    const plainPassword = generatePassword();
+
+    console.log(plainPassword, "KeyRound ")
+    
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+
+    await Student.findByIdAndUpdate(
+      student._id,
+      {
+        $set: {
+          password: hashedPassword,
+        }
+      },
+      { new: true }
+    );
+
+    try {
+      await sendPasswordEmail(
+        student.email,
+        student.firstname,
+        student.username, // Keep same username
+        plainPassword,
+        institution.name,
+        institution.email || "",
+        institution.phoneNo || "",
+        student.instituteId
+      );
+    } catch (err: any) {
+      console.error("Email failed:", err.message);
+      return res.status(500).json({
+        success: false,
+        message: "Password was reset but email sending failed. Please try again."
+      });
+    }
+
+    // ✅ Success response
+    return res.status(200).json({
+      success: true,
+      message: "Credentials reshared successfully! New password has been sent to the student's email.",
+      data: {
+        studentId: student.studentId,
+        username: student.username,
+        email: student.email,
+        name: `${student.firstname} ${student.lastname}`.trim()
+      }
+    });
+
+  } catch (err) {
+    console.error("Error resharing credentials:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error. Please try again later."
+    });
+  }
+};
 // Get a single student by ID
 export const getStudent = async (req: Request, res: Response) => {
   try {
