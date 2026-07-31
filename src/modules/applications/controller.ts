@@ -1526,13 +1526,15 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     if (!user)
       return res.status(401).json({ success: false, message: "Not authorized" })
     const { id } = req.params
+
     const application = await Application.findById(id)
     if (!application) {
       return res
         .status(404)
         .json({ success: false, message: "Application not found" })
     }
-
+    const oldProgram = application.program;
+    const oldProgramId = application.programId;
     const instituteId = req.body.instituteId || application.instituteId
     const programId = req.body.programId || application.programId;
     let program = application.program; // default existing
@@ -1748,6 +1750,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     }
 
 
+
     // ✅ Update document
     application.instituteId = instituteId
     application.programId = programId;
@@ -1788,12 +1791,40 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       studentUpdateData.studentImage = studentImage;
     }
 
-    await Student.findOneAndUpdate(
+    const student = await Student.findOneAndUpdate(
       { studentId: application.studentId },
       studentUpdateData,
       { new: true }
     );
 
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    if (req.body.programId && req.body.programId !== oldProgramId) {
+
+
+      const existingConcession = await FeeConcession.findOne({
+        studentId: student._id,
+        instituteId,
+      });
+
+
+      if (existingConcession) {
+        existingConcession.status = "pending";
+        existingConcession.programId = req.body.programId;
+        existingConcession.reason = `Program changed from ${oldProgram} to ${program}. Concession needs re-approval.`;
+        existingConcession.updatedAt = new Date();
+        existingConcession.approvedBy = undefined;
+        existingConcession.approvedAt = undefined;
+
+        await existingConcession.save();
+      }
+
+    }
 
 
     return res.status(200).json({

@@ -136,6 +136,7 @@ export const getFeeConfigurationByStudent = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved",
     }).select("referralIds paymentOptionId");
 
@@ -375,6 +376,7 @@ export const getFeeConfigurationByadmin = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved",
     }).select("referralIds paymentOptionId");
 

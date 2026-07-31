@@ -4,7 +4,7 @@ import mongoosePaginate from "mongoose-paginate-v2";
 export interface IFeeConcession extends Document {
   studentId: mongoose.Types.ObjectId;
   instituteId: string;
-
+  programId: string;
   reason: string;
   referralIds: string[];
   counsellorName: string;
@@ -50,6 +50,11 @@ const FeeConcessionSchema = new Schema<IFeeConcession>(
     ],
 
     counsellorName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    programId: {
       type: String,
       required: true,
       trim: true,

@@ -13,6 +13,7 @@ import FeeConcession from "../fees-concession/model";
 import Institution from "../institutions/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import { AuthRequest } from "../auth";
+import { protect } from "../../middlewares/auth";
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -188,6 +189,7 @@ export const createRazorpayPayment = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: new mongoose.Types.ObjectId(student.id),
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved",
     }).select("referralIds");
 
@@ -582,6 +584,7 @@ export const createInstamojoTuitionPayment = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: new mongoose.Types.ObjectId(student.id),
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved",
     }).select("referralIds");
 
@@ -943,6 +946,7 @@ export const createCCAvenueTuitionPayment = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: new mongoose.Types.ObjectId(student.id),
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved",
     }).select("referralIds");
 
@@ -1348,6 +1352,7 @@ export const manualTuitionPayment = async (
     const feeConcession = await FeeConcession.findOne({
       studentId: new mongoose.Types.ObjectId(student._id),
       instituteId: student.instituteId,
+      programId: student.programId,
       status: "approved"
     }).select("referralIds");
 
@@ -1397,15 +1402,15 @@ export const manualTuitionPayment = async (
     const manualPayment = await TuitionFee.create({
       studentId: student.studentId,
       instituteId: student.instituteId,
-      
+
       // Course Information
       courseId: course.courseId,
       courseName: course.name,
-      
+
       // Academic Information
       academicYear: student.academicYear,
       year: String(year),
-      
+
       // Installment Information
       installmentNumber: Number(installmentNumber),
       paymentOptionId: paymentOptionId,
@@ -1623,6 +1628,4 @@ export const getReceiptByPaymentId = async (
     });
   }
 };
-
-
 
