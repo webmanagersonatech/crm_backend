@@ -618,7 +618,7 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     const feedbackRating = (req.query.feedbackRating as string) || "all";
     const familyOccupation = (req.query.familyOccupation as string) || "all";
     const academicYear = (req.query.academicYear as string) || "all";
-
+    const community = req.query.community || "all";
 
     // Location filters
     const country = (req.query.country as string) || "all";
@@ -687,6 +687,14 @@ export const listStudents = async (req: AuthRequest, res: Response) => {
     if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
     if (academicYear !== "all") query.academicYear = academicYear;
+
+    if (community && community !== "all") {
+      if (Array.isArray(community)) {
+        query.community = { $in: community };
+      } else {
+        query.community = community;
+      }
+    }
 
     if (req.query.program) {
       if (Array.isArray(req.query.program)) {
@@ -781,7 +789,7 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
     const country = (req.query.country as string) || "all";
     const state = (req.query.state as string) || "all";
     const city = req.query.city || "all";
-
+    const community = req.query.community || "all";
     // Role-based access
     const userRole = req.user.role;
     const query: any = {};
@@ -826,6 +834,14 @@ export const exportStudents = async (req: AuthRequest, res: Response) => {
     if (feedbackRating !== "all") query.feedbackRating = feedbackRating;
     if (familyOccupation !== "all") query.familyOccupation = familyOccupation;
     if (academicYear !== "all") query.academicYear = academicYear;
+
+    if (community && community !== "all") {
+      if (Array.isArray(community)) {
+        query.community = { $in: community };
+      } else {
+        query.community = community;
+      }
+    }
     if (req.query.program) {
       if (Array.isArray(req.query.program)) {
         query.programId = { $in: req.query.program };
