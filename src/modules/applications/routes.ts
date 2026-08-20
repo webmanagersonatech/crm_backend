@@ -17,6 +17,7 @@ import {
     findUnmatchedStudentId,
     // updateProgramIdsForOldApplications,
     bulkUploadApplications,
+    updateCommunityInStudent  ,
     findUnmatchedStudentIds
 } from './controller'
 import { protect } from '../../middlewares/auth'
@@ -68,7 +69,7 @@ router.post(
 //     "/update-old-program-ids",
 //     updateProgramIdsForOldApplications
 // );
-
+router.put("/update-community", protect, updateCommunityInStudent);
 router.post("/", protect, upload.any(), createApplication);
 router.post("/updateacadamicyear", findUnmatchedStudentIds);
 router.post("/sms", sendSMS);

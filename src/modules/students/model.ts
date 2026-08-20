@@ -15,6 +15,7 @@ export interface IStudent extends Document {
   username: string;
   password: string;
   mobileNo: string;
+  year?: string;
   overallCutoff?: number;
   instituteId: string;
   state: string;
@@ -24,6 +25,7 @@ export interface IStudent extends Document {
   interactions?: string;
   admissionQuota?: string;
   admissionNumber?: string;
+  community?: string;
   classSection?: string;
   admissionUniversityRegNo?: string;
   internshipType?: string;
@@ -78,9 +80,13 @@ const StudentSchema = new Schema<IStudent>(
     classSection: {
       type: String,
     },
+    community: {
+      type: String,
+    },
     admissionUniversityRegNo: { type: String, unique: true },
     internshipType: { type: String },
     internshipCompany: { type: String },
+    year: { type: String },
     internshipDuration: { type: String },
     internshipRemarks: { type: String },
     hostelWilling: { type: Boolean, default: false },

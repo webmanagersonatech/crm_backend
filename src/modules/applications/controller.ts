@@ -111,7 +111,13 @@ const getInstituteShortName = (name: string) => {
     .join("")
     .toUpperCase();
 };
-
+// Extract community from personal details
+const extractCommunity = (personalDetails: any[]): string => {
+  const personal = personalDetails.find(
+    (s: any) => s.sectionName === "Personal Details"
+  );
+  return personal?.fields?.["Community"] || "";
+};
 // crypto suffix (uppercase)
 const generateUniqueSuffix = (length = 4) => {
   return crypto.randomBytes(2).toString("hex").toUpperCase().slice(0, length);
@@ -740,7 +746,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       institution?.name || "inst",
       firstname
     );
-
+    const community = extractCommunity(personalDetails);
     const studentData: any = {
       username,
       firstname,
@@ -761,6 +767,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       hostelWilling,
       siblingsCount,
       siblingsDetails,
+      community,
     };
 
     if (studentImage) {
@@ -1217,6 +1224,7 @@ export const createApplicationByStudent = async (
       Array.isArray(formConfig?.educationDetails) &&
       formConfig.educationDetails.length > 0;
 
+    const community = extractCommunity(personalDetails);
 
     if (student.applicationId) {
 
@@ -1280,6 +1288,7 @@ export const createApplicationByStudent = async (
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
+      student.community = community;
       student.overallCutoff = overallCutoff ?? undefined;
       if (studentImage) {
         student.studentImage = studentImage;
@@ -1320,6 +1329,7 @@ export const createApplicationByStudent = async (
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
       student.siblingsDetails = siblingsDetails;
+      student.community = community;
       student.overallCutoff = overallCutoff ?? undefined;
       student.academicYear = academicYear;
       if (studentImage) {
@@ -1767,7 +1777,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
     application.overallCutoff =
       overallCutoff ?? application.overallCutoff;
     await application.save()
-
+    const community = extractCommunity(personalDetails);
     const studentUpdateData: any = {
       firstname,
       email,
@@ -1779,6 +1789,7 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       academicYear: application.academicYear,
       interactions: application.interactions,
       bloodGroup,
+      community,
       hostelWilling,
       siblingsCount,
       siblingsDetails,
@@ -2605,9 +2616,6 @@ export const updateAcademicYearInMatchedApplicationStudentx = async (req: AuthRe
       );
     }
 
-
-
-
     return res.status(200).json({
       success: true,
       message: "Academic year updated successfully in students",
@@ -2688,7 +2696,94 @@ export const findUnmatchedStudentId = async (req: AuthRequest, res: Response) =>
   }
 
 };
+export const updateCommunityInStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    // 1️⃣ Get instituteId from params or query
+    const instituteId = "INS-0VVEACMY"
 
+    let filter: any = {};
+    if (instituteId) {
+      filter.instituteId = instituteId;
+    }
+
+    // 2️⃣ Fetch all applications
+    const applications = await Application.find(filter);
+
+    if (!applications || applications.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: instituteId
+          ? `No applications found for institute: ${instituteId}`
+          : "No applications found"
+      });
+    }
+
+    let updatedCount = 0;
+    let errors: any[] = [];
+
+    // 3️⃣ Loop through each application
+    for (const app of applications) {
+      try {
+        // Find Personal Details section
+        const personal = app.personalDetails.find(
+          (s) => s.sectionName === "Personal Details"
+        );
+
+        // Extract community field
+        const community = personal?.fields?.["Community"] || "";
+
+        // 4️⃣ Find student by applicationId or studentId and update community
+        const result = await Student.findOneAndUpdate(
+          {
+            $or: [
+              { applicationId: app.applicationId },
+              { studentId: app.studentId }
+            ]
+          },
+          {
+            $set: {
+              community: community,
+            },
+          },
+          { new: true }
+        );
+
+        if (result) {
+          updatedCount++;
+          console.log(`✅ Updated student ${result.studentId} with community: ${community}`);
+        } else {
+          errors.push({
+            applicationId: app.applicationId,
+            studentId: app.studentId,
+            error: "Student not found for this application"
+          });
+        }
+
+      } catch (err: any) {
+        errors.push({
+          applicationId: app.applicationId,
+          studentId: app.studentId,
+          error: err.message
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Updated ${updatedCount} students with community field`,
+      totalApplications: applications.length,
+      updatedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+
+  } catch (error: any) {
+    console.error("❌ Update error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 export const findUnmatchedStudentIds = async (req: AuthRequest, res: Response) => {
   try {
     // Define interfaces for type safety
