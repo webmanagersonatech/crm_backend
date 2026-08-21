@@ -14,7 +14,7 @@ export interface IFeeConfiguration extends Document {
       amount: number;
       tuitionFee: number;
       otherFee: number;
-
+      otherFeeDescription?: string;
       paymentOptions: {
         paymentOptionId: string;
         name: string;
@@ -90,6 +90,10 @@ const FeeConfigurationSchema = new Schema<IFeeConfiguration>(
               type: Number,
               required: true,
               min: 0,
+            },
+            otherFeeDescription: {
+              type: String,
+
             },
 
             paymentOptions: [

@@ -178,7 +178,9 @@ export const getFormManagerByInstituteId = async (
 
     const settingsDoc = await Settings.findOne({
       instituteId
-    }).select("applicantAge");
+    }).select("applicantAge courseYears");
+
+
 
     if (!form) {
       return res.status(404).json({
@@ -192,7 +194,8 @@ export const getFormManagerByInstituteId = async (
       success: true,
       message: 'Form configuration fetched successfully',
       data: form,
-      age: settingsDoc?.applicantAge ?? null
+      age: settingsDoc?.applicantAge ?? null,
+      courseYears:settingsDoc?.courseYears?? null
 
     })
 

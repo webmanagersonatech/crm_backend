@@ -16,7 +16,7 @@ export const feeConfigurationSchema = Joi.object({
               amount: Joi.number().min(0).required(),
               tuitionFee: Joi.number().min(0).required(),
               otherFee: Joi.number().min(0).required(),
-
+              otherFeeDescription: Joi.string().optional().allow(""),
               paymentOptions: Joi.array()
                 .items(
                   Joi.object({

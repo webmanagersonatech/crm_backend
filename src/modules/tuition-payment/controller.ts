@@ -1453,18 +1453,6 @@ export const manualTuitionPayment = async (
       matchedReferrals: matchedReferrals
     });
 
-    // 16. Log the manual payment
-    console.log(`Manual payment recorded:`, {
-      studentId: student.studentId,
-      studentName: `${student.firstname} ${student.lastname}`,
-      amount: Number(amount),
-      orderId: orderId,
-      recordedBy: user.id,
-      installmentNumber: installmentNumber,
-      year: year,
-      paymentOptionId: paymentOptionId,
-      concessionPercentage: concessionPercentage
-    });
 
     // 17. Return success response
     return res.status(200).json({

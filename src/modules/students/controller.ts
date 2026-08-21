@@ -19,6 +19,7 @@ import crypto from "crypto";
 import Otp from "../otp/model";
 import FeeConfiguration from "../fee-configuartion/model"
 import FeeConcession from "../fees-concession/model"
+import TuitionFee from "../tuition-payment/model"
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -442,7 +443,7 @@ export const reshareCredentials = async (req: Request, res: Response) => {
     const plainPassword = generatePassword();
 
     console.log(plainPassword, "KeyRound ")
-    
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(plainPassword, salt);
 
@@ -505,9 +506,18 @@ export const getStudent = async (req: Request, res: Response) => {
       path: "application",
       select: "personalDetails",
     });
+
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    res.status(200).json({ success: true, data: student });
+    const settingsDoc = await Settings.findOne({
+      instituteId: student.instituteId
+    }).select("courseYears");
+
+    res.status(200).json({
+      success: true,
+      data: student,
+      courseYears: settingsDoc?.courseYears || 0  // Send separately
+    });
   } catch (err) {
     console.error("Error getting student:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -521,8 +531,9 @@ export const getoverallReferralsByInstitute = async (
     const { id } = req.params;
 
     const student = await Student.findById(id).select(
-      "firstname lastname email programId studentId instituteId"
+      "firstname lastname email programId studentId instituteId year"
     );
+
 
     if (!student) {
       return res.status(404).json({
@@ -553,26 +564,32 @@ export const getoverallReferralsByInstitute = async (
       courseFeeResponse = {
         courseId: matchedCourse.courseId,
         courseName: matchedCourse.name,
-        years: matchedCourse.years.map((year: any) => {
-          // Filter out "Full Payment" and only keep installment options
-          const installmentOptions = year.paymentOptions?.filter(
-            (option: any) => option.type === 'installment'
-          ) || [];
+        years: matchedCourse.years
+          .filter(
+            (year: any) =>
+              Number(year.year) === Number(student.year ?? 1)
+          )
+          .map((year: any) => {
+            // Filter out "Full Payment" and only keep installment options
+            const installmentOptions = year.paymentOptions?.filter(
+              (option: any) => option.type === 'installment'
+            ) || [];
 
-          // Map to only return name and paymentOptionId
-          const paymentOptions = installmentOptions.map((option: any) => ({
-            name: option.name,
-            value: option.paymentOptionId
-          }));
+            // Map to only return name and paymentOptionId
+            const paymentOptions = installmentOptions.map((option: any) => ({
+              name: option.name,
+              value: option.paymentOptionId
+            }));
 
-          return {
-            year: year.year,
-            totalAmount: year.amount,
-            tuitionFee: year.tuitionFee,
-            otherFee: year.otherFee,
-            paymentOptions: paymentOptions
-          };
-        })
+            return {
+              year: year.year,
+              totalAmount: year.amount,
+              tuitionFee: year.tuitionFee,
+              otherFee: year.otherFee,
+              feesdescription: year.otherFeeDescription,
+              paymentOptions: paymentOptions
+            };
+          })
       };
     }
 
@@ -985,15 +1002,25 @@ export const updateStudent = async (req: Request, res: Response) => {
   }
 };
 // Update ONLY cleanup data
-export const updateStudentCleanupData = async (req: Request, res: Response) => {
+export const updateStudentCleanupData = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
 
-    if (updates.feedbackRating === "") delete updates.feedbackRating;
+    if (updates.feedbackRating === "") {
+      delete updates.feedbackRating;
+    }
 
-    // Current student
-    const currentStudent = await Student.findById(id).select("instituteId");
+    // ============================================================
+    // CURRENT STUDENT
+    // ============================================================
+
+    const currentStudent = await Student.findById(id).select(
+      "studentId instituteId programId year"
+    );
 
     if (!currentStudent) {
       return res.status(404).json({
@@ -1002,8 +1029,15 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
       });
     }
 
-    // Duplicate admission number check within same institute
-    if (updates.admissionNumber) {
+    // ============================================================
+    // DUPLICATE ADMISSION NUMBER CHECK
+    // ============================================================
+
+    if (
+      updates.admissionNumber !== undefined &&
+      updates.admissionNumber !== null &&
+      String(updates.admissionNumber).trim() !== ""
+    ) {
       const existingStudent = await Student.findOne({
         instituteId: currentStudent.instituteId,
         admissionNumber: updates.admissionNumber,
@@ -1018,26 +1052,352 @@ export const updateStudentCleanupData = async (req: Request, res: Response) => {
       }
     }
 
-    const updatedStudent = await Student.findByIdAndUpdate(
-      id,
-      { $set: updates },
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    // ============================================================
+    // YEAR CHANGE VALIDATION & PAYMENT CHECK
+    // ============================================================
 
-    res.status(200).json({
+    const isYearChanged =
+      updates.year !== undefined &&
+      updates.year !== null &&
+      String(updates.year).trim() !== "" &&
+      Number(updates.year) !== Number(currentStudent.year);
+
+    if (isYearChanged) {
+      const studentId = currentStudent.studentId;
+      const instituteId = currentStudent.instituteId;
+      const programId = currentStudent.programId;
+      const currentYear = currentStudent.year;
+
+      // ==========================================================
+      // GET FEE STRUCTURE
+      // ==========================================================
+
+      const feeStructure = await FeeConfiguration.findOne({
+        instituteId,
+      });
+
+      if (!feeStructure) {
+        throw new Error("Fee structure not found");
+      }
+
+      // ==========================================================
+      // FIND COURSE
+      // ==========================================================
+
+      const course = feeStructure.courseFeeStructure.find(
+        (c: any) =>
+          String(c.courseId).trim() ===
+          String(programId).trim()
+      );
+
+      if (!course) {
+        throw new Error(
+          `Course not found. ProgramId: ${programId}`
+        );
+      }
+
+      // ==========================================================
+      // FIND CURRENT YEAR FEE
+      // ==========================================================
+
+      const currentYearFee = course.years.find(
+        (y: any) =>
+          Number(y.year) === Number(currentYear)
+      );
+
+      if (!currentYearFee) {
+        throw new Error(
+          `Fee structure not found for year ${currentYear}`
+        );
+      }
+
+      // ==========================================================
+      // PAYMENT OPTIONS
+      // ==========================================================
+
+      const paymentOptions =
+        currentYearFee.paymentOptions || [];
+
+      if (paymentOptions.length === 0) {
+        throw new Error(
+          `No payment options found for year ${currentYear}`
+        );
+      }
+
+      // ==========================================================
+      // GET STUDENT PAYMENTS FOR CURRENT YEAR
+      // ==========================================================
+
+      const studentPayments = await TuitionFee.find({
+        studentId,
+        instituteId,
+        courseId: programId,
+        year: currentYear,
+      }).sort({
+        createdAt: 1,
+      });
+
+
+
+      if (
+        !studentPayments ||
+        studentPayments.length === 0
+      ) {
+        throw new Error(
+          `No payment records found for year ${currentYear}. ` +
+          `Please complete payment before changing year.`
+        );
+      }
+
+      // ==========================================================
+      // GET FIRST PAID PAYMENT
+      // ==========================================================
+
+      const firstPaidPayment =
+        studentPayments.find(
+          (payment: any) =>
+            payment.status === "paid"
+        );
+
+      if (!firstPaidPayment) {
+        throw new Error(
+          `No paid payment found for year ${currentYear}. ` +
+          `Please complete payment before changing year.`
+        );
+      }
+
+      // ==========================================================
+      // GET PAYMENT OPTION ID
+      // ==========================================================
+
+      const paymentOptionId =
+        firstPaidPayment.paymentOptionId;
+
+      if (!paymentOptionId) {
+        throw new Error(
+          "Payment option not found in the student's paid payment record"
+        );
+      }
+
+      // ==========================================================
+      // FIND PAYMENT OPTION CONFIGURATION
+      // ==========================================================
+
+      const paymentOptionConfig =
+        paymentOptions.find(
+          (option: any) =>
+            String(option.paymentOptionId).trim() ===
+            String(paymentOptionId).trim()
+        );
+
+      if (!paymentOptionConfig) {
+        throw new Error(
+          `Payment option ${paymentOptionId} not found in fee structure`
+        );
+      }
+
+      // ==========================================================
+      // GET ALL PAYMENTS FOR THIS PAYMENT OPTION
+      // ==========================================================
+
+      const allPayments = await TuitionFee.find({
+        studentId,
+        instituteId,
+        courseId: programId,
+        year: currentYear,
+        paymentOptionId,
+      });
+
+
+      // ==========================================================
+      // FULL PAYMENT
+      // ==========================================================
+
+      if (
+        paymentOptionConfig.type === "full_payment"
+      ) {
+        const fullPaymentPaid =
+          allPayments.some(
+            (payment: any) =>
+              payment.status === "paid"
+          );
+
+        if (!fullPaymentPaid) {
+          throw new Error(
+            "Cannot change year. Full payment is not completed. " +
+            "Please complete the full payment before proceeding to next year."
+          );
+        }
+      }
+
+      // ==========================================================
+      // INSTALLMENT PAYMENT
+      // ==========================================================
+
+      else if (
+        paymentOptionConfig.type === "installment"
+      ) {
+        const configuredInstallments =
+          paymentOptionConfig.installments || [];
+
+        const totalInstallments =
+          configuredInstallments.length;
+
+        if (totalInstallments === 0) {
+          throw new Error(
+            `No installments configured for payment option ${paymentOptionId}`
+          );
+        }
+
+        // ========================================================
+        // GET ONLY SUCCESSFULLY PAID PAYMENTS
+        //
+        // IMPORTANT:
+        // Pending / failed payments are ignored.
+        //
+        // Example:
+        //
+        // Installment 3 -> pending
+        // Installment 3 -> paid
+        //
+        // Result:
+        // Installment 3 = PAID
+        // ========================================================
+
+        const paidPayments =
+          allPayments.filter(
+            (payment: any) =>
+              payment.status === "paid"
+          );
+
+        // ========================================================
+        // GET UNIQUE PAID INSTALLMENT NUMBERS
+        // ========================================================
+
+        const paidInstallmentNumbers =
+          new Set<number>();
+
+        paidPayments.forEach(
+          (payment: any) => {
+            if (
+              payment.installmentNumber !== undefined &&
+              payment.installmentNumber !== null
+            ) {
+              paidInstallmentNumbers.add(
+                Number(payment.installmentNumber)
+              );
+            }
+          }
+        );
+
+        console.log(
+          "Paid Installment Numbers:",
+          Array.from(paidInstallmentNumbers)
+        );
+
+        // ========================================================
+        // FIND PENDING INSTALLMENTS
+        //
+        // Compare configured installments against
+        // successfully paid installment numbers.
+        // ========================================================
+
+        const pendingInstallments =
+          configuredInstallments.filter(
+            (installment: any) =>
+              !paidInstallmentNumbers.has(
+                Number(installment.number)
+              )
+          );
+
+        console.log(
+          "Pending Installments:",
+          pendingInstallments
+        );
+
+        // ========================================================
+        // CALCULATE COUNTS
+        // ========================================================
+
+        const paidCount =
+          totalInstallments -
+          pendingInstallments.length;
+
+        const pendingCount =
+          pendingInstallments.length;
+
+        // ========================================================
+        // NOT ALL INSTALLMENTS PAID
+        // ========================================================
+
+        if (pendingCount > 0) {
+          const pendingNumbers =
+            pendingInstallments
+              .map(
+                (installment: any) =>
+                  installment.number
+              )
+              .join(", ");
+
+          throw new Error(
+            `Cannot change year. ` +
+            `${paidCount} of ${totalInstallments} installment(s) paid. ` +
+            `${pendingCount} installment(s) pending. ` +
+            `Pending installment(s): ${pendingNumbers}. ` +
+            `Please complete all payments before proceeding to next year.`
+          );
+        }
+
+        // ========================================================
+        // ALL INSTALLMENTS PAID
+        // ========================================================
+
+
+      }
+
+      // ==========================================================
+      // UNKNOWN PAYMENT TYPE
+      // ==========================================================
+
+      else {
+        throw new Error(
+          `Unsupported payment type: ${paymentOptionConfig.type}`
+        );
+      }
+    }
+
+    // ============================================================
+    // UPDATE STUDENT
+    // ============================================================
+
+    const updatedStudent =
+      await Student.findByIdAndUpdate(
+        id,
+        {
+          $set: updates,
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+    return res.status(200).json({
       success: true,
-      message: "Student cleanup data updated successfully",
+      message:
+        "Student cleanup data updated successfully",
       data: updatedStudent,
     });
   } catch (err: any) {
-    console.error("Error updating student cleanup data:", err);
+    console.error(
+      "Error updating student cleanup data:",
+      err
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: err.message || "Internal server error",
+      message:
+        err.message || "Internal server error",
     });
   }
 };
@@ -1473,8 +1833,14 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
 
     const insuitelogo = settings?.logo || null;
 
-    const SPECIAL_INSTITUTE_ID = "INS-3-ZXYXKM";
-    const showTuitionFeePayment = student.instituteId === SPECIAL_INSTITUTE_ID;
+    const SPECIAL_INSTITUTE_IDS = [
+      "INS-3-ZXYXKM",
+      "INS-ESTKLHCB",
+    ];
+
+    const showTuitionFeePayment = SPECIAL_INSTITUTE_IDS.includes(
+      student.instituteId
+    );
 
     return res.status(200).json({
       success: true,
