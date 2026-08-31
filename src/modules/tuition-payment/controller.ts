@@ -635,9 +635,8 @@ export const createInstamojoTuitionPayment = async (
       });
     }
 
-    // Get Instamojo credentials from settings
-    const instamojoApiKey = settings.paymentCredentials.keyId
-    const instamojoAuthToken = settings.paymentCredentials.keySecret
+    const instamojoApiKey = "354258c3f2d1eda35995dae1540db4b4";
+    const instamojoAuthToken = "7f76729963176d6cc7169105b0cd81f4";
 
     if (!instamojoApiKey || !instamojoAuthToken) {
       return res.status(400).json({
