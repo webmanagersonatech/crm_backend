@@ -1837,6 +1837,7 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
       "INS-3-ZXYXKM",
       "INS-ESTKLHCB",
     ];
+    const showHostelFeePayment = student.hostelWilling === true;
 
     const showTuitionFeePayment = SPECIAL_INSTITUTE_IDS.includes(
       student.instituteId
@@ -1851,7 +1852,8 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
           firstname: student.firstname,
           lastname: student.lastname,
           insuitelogo,
-          shownturtionfeepayment: showTuitionFeePayment
+          shownturtionfeepayment: showTuitionFeePayment,
+          showhostelfeepayment: showHostelFeePayment,
         },
       }
     });

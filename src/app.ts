@@ -29,6 +29,7 @@ import mattrainingRoutes from './modules/mat-coaching-center/routes'
 import feeConfigurationRoutes from './modules/fee-configuartion/routes';
 import tuitionFeeRoutes from './modules/tuition-payment/routes';
 import feesconcession from './modules/fees-concession/routes'
+import additionalFeeConfigurationRoutes from './modules/additional-fee-configuartion/routes';
 
 dotenv.config();
 
@@ -85,6 +86,7 @@ app.use('/api/mat-training', mattrainingRoutes);
 app.use('/api/fee-configuration', feeConfigurationRoutes);
 app.use('/api/ciicp', ciicpRoutes);
 app.use('/api/tuition-fee', tuitionFeeRoutes);
+app.use('/api/additional-fee-configuration', additionalFeeConfigurationRoutes);
 app.use('/api/fee-concession', feesconcession);
 app.use('/api/captcha', captchaRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
