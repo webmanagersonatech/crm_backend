@@ -23,8 +23,6 @@ const OtpSchema = new Schema<IOtp>(
     },
     instituteId: {
       type: String,
-      required: true,
-      index: true,
     },
     verified: {
       type: Boolean,
