@@ -12,6 +12,7 @@ import {
   ccavenueTuitionCancel,
   manualTuitionPayment,
   getReceiptByPaymentId,
+  getAllTransactionReceipts,
 } from "./controller";
 import { studentProtect } from "../../middlewares/studentAuth";
 import { protect } from "../../middlewares/auth";
@@ -33,5 +34,6 @@ router.post("/create/ccavenue", studentProtect, createCCAvenueTuitionPayment);
 router.post("/ccavenue/success", ccavenueTuitionSuccess);
 router.get("/ccavenue/cancel", ccavenueTuitionCancel);
 router.get('/receipt/:paymentId', studentProtect, getReceiptByPaymentId);
-
+// Optional: Get all transactions with filters
+router.get("/transactions", studentProtect, getAllTransactionReceipts);
 export default router;

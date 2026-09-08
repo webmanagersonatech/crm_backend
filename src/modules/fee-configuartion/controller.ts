@@ -7,7 +7,7 @@ import Settings from '../settings/model';
 import TuitionFees from '../tuition-payment/model';
 import FeeConcession from '../fees-concession/model';
 import { AuthRequest } from '../auth';
-
+import Permission from '../permissions/model'
 
 export const upsertFeeConfiguration = async (
   req: Request,
@@ -48,11 +48,40 @@ export const upsertFeeConfiguration = async (
 };
 
 export const getFeeConfigurationByInstitute = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ) => {
   try {
     const { instituteId } = req.params;
+
+    const user = req.user
+
+    if (!user) return res.status(401).json({ message: 'Not authorized' })
+
+
+    if (user.role !== "superadmin") {
+
+      if (instituteId !== user.instituteId) {
+        return res.status(403).json({
+          message: "You are not authorized to access this institution",
+        });
+      }
+
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const Permissionallow = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Tuition Fee Configuration"
+      );
+
+      if (!Permissionallow?.view) {
+        return res.status(403).json({
+          message: "You have no permission to view this data",
+        });
+      }
+    }
 
     const feeConfig = await FeeConfiguration.findOne({
       instituteId,
@@ -234,7 +263,7 @@ export const getFeeConfigurationByStudent = async (
               option.type === "installment" &&
               option.paymentOptionId === (feeConcession?.paymentOptionId ??
                 `${student.instituteId}-INSTALLMENT-2`)
-          );
+          );  
         }
 
         // Flatten each matched option's installments into the response

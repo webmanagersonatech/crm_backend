@@ -1615,4 +1615,59 @@ export const getReceiptByPaymentId = async (
     });
   }
 };
+export const getAllTransactionReceipts = async (
+  req: StudentAuthRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const student = req.student;
 
+    if (!student) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // Build filter - only paid transactions
+    const filter: any = {
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      status: PAYMENT_STATUS.PAID,
+    };
+
+    // Fetch all paid transactions (no pagination)
+    const transactions = await TuitionFee.find(filter)
+      .sort({ createdAt: -1 }) // Sort by newest first
+      .lean();
+
+    // Format transactions with only required fields
+    const formattedTransactions = transactions.map((transaction) => ({
+      _id: transaction._id,
+      studentId: transaction.studentId,
+      courseName: transaction.courseName,
+      paymentType: transaction.paymentType,
+      installmentNumber: transaction.installmentNumber,
+      year: transaction.year,
+      paymentOptionName: transaction.paymentOptionName,
+      totalAmount: transaction.totalAmount,
+      orderId: transaction.orderId,
+      paymentId:transaction.paymentId,
+      gateway: transaction.gateway,
+      status: transaction.status,
+      createdAt: transaction.createdAt,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedTransactions,
+    });
+
+  } catch (error) {
+    console.error("Get All Transactions Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch transactions",
+    });
+  }
+};
