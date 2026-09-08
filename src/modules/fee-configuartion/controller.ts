@@ -7,6 +7,8 @@ import Settings from '../settings/model';
 import TuitionFees from '../tuition-payment/model';
 import FeeConcession from '../fees-concession/model';
 import { AuthRequest } from '../auth';
+
+
 export const upsertFeeConfiguration = async (
   req: Request,
   res: Response
@@ -82,7 +84,7 @@ export const getFeeConfigurationByStudent = async (
 ) => {
   try {
     const studentId = req.student?.id;
-    const { paymentmethod } = req.query;
+    const { paymentmethod, chooseunpaidyear } = req.query;
 
     if (!studentId) {
       return res.status(401).json({
@@ -90,7 +92,6 @@ export const getFeeConfigurationByStudent = async (
         message: "Not authorized",
       });
     }
-
     const student = await Student.findById(studentId);
 
     if (!student) {
@@ -109,7 +110,8 @@ export const getFeeConfigurationByStudent = async (
 
     const settingsDoc = await Settings.findOne({
       instituteId: student.instituteId,
-    }).select("gstPercentage paymentMethod");
+    }).select("gstPercentage paymentMethod courseYears");
+
 
     const feeConfiguration = await FeeConfiguration.findOne({
       instituteId: student.instituteId,
@@ -157,15 +159,22 @@ export const getFeeConfigurationByStudent = async (
 
     // Which payment method was requested — default to full_payment
 
-
+    const selectedYear = Number(
+      chooseunpaidyear || student.year || 1
+    );
     // ✅ FIX: Fetch actual payment records for this student
     const payments = await TuitionFees.find({
-      year: student.year || 1,
+      year: selectedYear,
       studentId: student.studentId,
       instituteId: student.instituteId,
       courseId: student.programId,
       status: "paid",
     }).lean();
+
+
+
+
+
 
     const initialPaymentType =
       payments.length > 0 ? payments[0].paymentType : null;
@@ -192,8 +201,7 @@ export const getFeeConfigurationByStudent = async (
     // Build response based on payment method
     const enrichedYears = courseFee.years
       .filter(
-        (year: any) =>
-          Number(year.year) === Number(student.year || 1)
+        (year: any) => Number(year.year) === selectedYear
       )
       .map((year: any) => {
         const originalTotalAmount = year.amount;
@@ -292,6 +300,65 @@ export const getFeeConfigurationByStudent = async (
         };
       });
 
+
+
+    const allpayments = await TuitionFees.find({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      courseId: student.programId,
+      status: "paid",
+    }).lean();
+
+    const currentYear = Number(student.year || 1);
+
+    const unpaidYears: number[] = [];
+
+    courseFee.years
+      .filter((year: any) => Number(year.year) < currentYear)
+      .forEach((year: any) => {
+        const yearNumber = Number(year.year);
+        const paymentOptions = year.paymentOptions || [];
+
+        // Get all paid payments for this year
+        const yearPayments = allpayments.filter(
+          (payment: any) => Number(payment.year) === yearNumber
+        );
+
+        // Check whether all configured payment installments are paid
+        let yearFullyPaid = false;
+
+        for (const option of paymentOptions) {
+          const installments = option.installments || [];
+
+          if (!installments.length) continue;
+
+          const paidInstallments = installments.filter((inst: any) =>
+            yearPayments.some(
+              (payment: any) =>
+                payment.paymentOptionId === option.paymentOptionId &&
+                Number(payment.installmentNumber) === Number(inst.number)
+            )
+          );
+
+          if (paidInstallments.length === installments.length) {
+            yearFullyPaid = true;
+            break;
+          }
+        }
+
+        // If no complete payment option is paid, year is unpaid
+        if (!yearFullyPaid) {
+          unpaidYears.push(yearNumber);
+        }
+      });
+
+    // Current year first
+    unpaidYears.sort((a, b) => {
+      if (a === currentYear) return -1;
+      if (b === currentYear) return 1;
+      return b - a;
+    });
+
     return res.status(200).json({
       success: true,
       data: {
@@ -301,6 +368,7 @@ export const getFeeConfigurationByStudent = async (
         courseName: courseFee.name,
         paymentMethod: settingsDoc?.paymentMethod,
         initialPaymentType,
+        unpaidYears,
         feeConcession: {
           referralIds: feeConcession?.referralIds || [],
           matchedReferrals,
@@ -329,7 +397,7 @@ export const getFeeConfigurationByadmin = async (
 
     if (!user) return res.status(401).json({ message: 'Not authorized' });
 
-    const { paymentmethod } = req.query;
+    const { paymentmethod, chooseunpaidyear } = req.query;
     const { studentId } = req.params;
 
     if (!studentId) {
@@ -405,9 +473,12 @@ export const getFeeConfigurationByadmin = async (
     }
 
     // Get paid transactions
+    const selectedYear = Number(
+      chooseunpaidyear || student.year || 1
+    );
 
     const payments = await TuitionFees.find({
-      year: student.year || 1,
+      year: selectedYear,
       studentId: student.studentId,
       instituteId: student.instituteId,
       courseId: student.programId,
@@ -440,7 +511,7 @@ export const getFeeConfigurationByadmin = async (
     const enrichedYears = courseFee.years
       .filter(
         (year: any) =>
-          Number(year.year) === Number(student.year || 1)
+          Number(year.year) === selectedYear
       )
       .map((year: any) => {
         const originalTotalAmount = year.amount;
@@ -536,6 +607,55 @@ export const getFeeConfigurationByadmin = async (
         };
       });
 
+    const allpayments = await TuitionFees.find({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      courseId: student.programId,
+      status: "paid",
+    }).lean();
+
+    const currentYear = Number(student.year || 1);
+
+    const unpaidYears: number[] = [];
+
+    courseFee.years
+      .filter((year: any) => Number(year.year) < currentYear)
+      .forEach((year: any) => {
+        const yearNumber = Number(year.year);
+        const paymentOptions = year.paymentOptions || [];
+
+        const yearPayments = allpayments.filter(
+          (payment: any) => Number(payment.year) === yearNumber
+        );
+
+        let yearFullyPaid = false;
+
+        for (const option of paymentOptions) {
+          const installments = option.installments || [];
+
+          if (!installments.length) continue;
+
+          const paidInstallments = installments.filter((inst: any) =>
+            yearPayments.some(
+              (payment: any) =>
+                payment.paymentOptionId === option.paymentOptionId &&
+                Number(payment.installmentNumber) === Number(inst.number)
+            )
+          );
+
+          if (paidInstallments.length === installments.length) {
+            yearFullyPaid = true;
+            break;
+          }
+        }
+
+        if (!yearFullyPaid) {
+          unpaidYears.push(yearNumber);
+        }
+      });
+
+    unpaidYears.sort((a, b) => b - a);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -544,6 +664,7 @@ export const getFeeConfigurationByadmin = async (
         programId: student.programId,
         courseName: courseFee.name,
         paymentMethod: settingsDoc?.paymentMethod,
+        unpaidYears,
         initialPaymentType,
         feeConcession: {
           referralIds: feeConcession?.referralIds || [],

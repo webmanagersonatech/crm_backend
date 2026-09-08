@@ -1056,11 +1056,18 @@ export const updateStudentCleanupData = async (
     // YEAR CHANGE VALIDATION & PAYMENT CHECK
     // ============================================================
 
+    const currentYear =
+      currentStudent.year !== undefined &&
+        currentStudent.year !== null &&
+        String(currentStudent.year).trim() !== ""
+        ? Number(currentStudent.year)
+        : 1;
+
     const isYearChanged =
       updates.year !== undefined &&
       updates.year !== null &&
       String(updates.year).trim() !== "" &&
-      Number(updates.year) !== Number(currentStudent.year);
+      Number(updates.year) !== currentYear;
 
     if (isYearChanged) {
       const studentId = currentStudent.studentId;
