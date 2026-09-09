@@ -2434,7 +2434,6 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
 
 
     const applications = await Application.find(filter)
-      .select('-personalDetails -educationDetails')
       .sort({ createdAt: -1 })
       .populate([
         { path: 'institute', select: 'name' },
