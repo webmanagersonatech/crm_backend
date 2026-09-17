@@ -30,6 +30,7 @@ import feeConfigurationRoutes from './modules/fee-configuartion/routes';
 import tuitionFeeRoutes from './modules/tuition-payment/routes';
 import feesconcession from './modules/fees-concession/routes'
 import additionalFeeConfigurationRoutes from './modules/additional-fee-configuartion/routes';
+import paidFeeRoutes from './modules/paidfee/routes';
 
 dotenv.config();
 
@@ -89,6 +90,7 @@ app.use('/api/tuition-fee', tuitionFeeRoutes);
 app.use('/api/additional-fee-configuration', additionalFeeConfigurationRoutes);
 app.use('/api/fee-concession', feesconcession);
 app.use('/api/captcha', captchaRoutes);
+app.use('/api/paid-fees', paidFeeRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
 
 export default app;

@@ -15,13 +15,15 @@ import Institution from '../institutions/model'
 import Permission from '../permissions/model'
 import FeeConcession from '../fees-concession/model'
 import TuitionFee from '../tuition-payment/model'
+import PaidFee from '../paidfee/model'
+
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 const defaultClient = SibApiV3Sdk.ApiClient.instance;
 defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
-const smsApi = new SibApiV3Sdk.TransactionalSMSApi(); // ✅ Correct
+const smsApi = new SibApiV3Sdk.TransactionalSMSApi();
 
 const mapSiblingStatus = (value: string) => {
   if (!value) return "none";
@@ -2511,6 +2513,22 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
         console.log(`🗑️ Deleted ${deletedConcessions.deletedCount} fee concession records`);
       }
 
+
+      // 3c. Delete Paid Fee records
+      const paidFees = await PaidFee.find({
+        studentId: student._id,
+        instituteId: instituteId,
+      });
+
+      if (paidFees.length > 0) {
+        const deletedPaidFees = await PaidFee.deleteMany({
+          studentId: student._id,
+          instituteId: instituteId,
+        });
+
+        console.log(`🗑️ Deleted ${deletedPaidFees.deletedCount} paid fee records`);
+      }
+
       // 3b. Delete Tuition Fee records
       const tuitionFees = await TuitionFee.find({
         studentId: student.studentId,
@@ -2525,6 +2543,9 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
 
         console.log(`🗑️ Deleted ${deletedTuition.deletedCount} tuition fee records`);
       }
+
+
+
 
       await Student.findOneAndDelete({
         studentId: studentId,

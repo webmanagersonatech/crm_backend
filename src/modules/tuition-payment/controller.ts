@@ -5,6 +5,8 @@ import mongoose from "mongoose";
 import axios from "axios";
 import qs from "querystring";
 import Student from "../students/model";
+import PaidFee from '../paidfee/model';
+
 // Models
 import TuitionFee from "./model";
 import FeeConfiguration from '../fee-configuartion/model'
@@ -13,7 +15,7 @@ import FeeConcession from "../fees-concession/model";
 import Institution from "../institutions/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import { AuthRequest } from "../auth";
-import { protect } from "../../middlewares/auth";
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -223,7 +225,27 @@ export const createRazorpayPayment = async (
     const gstAmount = 0;
 
     // Final payable amount
-    const finalAmount = totalAmount + gstAmount;
+    // -------------------------------------------------------
+    // Already Given Amount
+    // -------------------------------------------------------
+
+    const paidFeeRecords = await PaidFee.find({
+      studentId: student.id.toString(),
+      instituteId: student.instituteId,
+      programId: student.programId,
+      year: Number(year),
+    }).lean();
+
+    const givenAmount = paidFeeRecords.reduce(
+      (sum, pf) => sum + Number(pf.totalAmount || 0),
+      0
+    );
+
+    // Final payable after deducting already given amount
+    const finalAmount = Math.max(
+      totalAmount + gstAmount - givenAmount,
+      0
+    );
 
     // -------------------------------------------------------
     // Payment Settings
@@ -618,7 +640,23 @@ export const createInstamojoTuitionPayment = async (
     const gstAmount = 0;
 
     // Final payable amount
-    const finalAmount = totalAmount + gstAmount;
+    const paidFeeRecords = await PaidFee.find({
+      studentId: student._id.toString(),
+      instituteId: student.instituteId,
+      programId: student.programId,
+      year: Number(year),
+    }).lean();
+
+    const givenAmount = paidFeeRecords.reduce(
+      (sum, pf) => sum + Number(pf.totalAmount || 0),
+      0
+    );
+
+    // Final payable amount after deducting given amount
+    const finalAmount = Math.max(
+      totalAmount + gstAmount - givenAmount,
+      0
+    );
 
     // -------------------------------------------------------
     // Payment Settings
@@ -979,7 +1017,23 @@ export const createCCAvenueTuitionPayment = async (
     const gstAmount = 0;
 
     // Final payable amount
-    const finalAmount = totalAmount + gstAmount;
+    const paidFeeRecords = await PaidFee.find({
+      studentId: student._id.toString(),
+      instituteId: student.instituteId,
+      programId: student.programId,
+      year: Number(year),
+    }).lean();
+
+    const givenAmount = paidFeeRecords.reduce(
+      (sum, pf) => sum + Number(pf.totalAmount || 0),
+      0
+    );
+
+    // Final payable amount after deducting given amount
+    const finalAmount = Math.max(
+      totalAmount + gstAmount - givenAmount,
+      0
+    );
 
     // -------------------------------------------------------
     // Generate Order ID
@@ -1652,7 +1706,7 @@ export const getAllTransactionReceipts = async (
       paymentOptionName: transaction.paymentOptionName,
       totalAmount: transaction.totalAmount,
       orderId: transaction.orderId,
-      paymentId:transaction.paymentId,
+      paymentId: transaction.paymentId,
       gateway: transaction.gateway,
       status: transaction.status,
       createdAt: transaction.createdAt,

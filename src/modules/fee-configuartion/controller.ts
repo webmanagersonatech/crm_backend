@@ -8,6 +8,7 @@ import TuitionFees from '../tuition-payment/model';
 import FeeConcession from '../fees-concession/model';
 import { AuthRequest } from '../auth';
 import Permission from '../permissions/model'
+import PaidFee from '../paidfee/model';
 
 export const upsertFeeConfiguration = async (
   req: Request,
@@ -153,6 +154,8 @@ export const getFeeConfigurationByStudent = async (
       });
     }
 
+
+
     const courseFee = feeConfiguration.courseFeeStructure.find(
       (course: any) => course.courseId === student.programId
     );
@@ -200,16 +203,31 @@ export const getFeeConfigurationByStudent = async (
       status: "paid",
     }).lean();
 
+    const paidFeeRecords = await PaidFee.find({
+      studentId: student._id.toString(),
+      instituteId: student.instituteId,
+      programId: student.programId,
+      year: selectedYear,
+    }).lean();
 
-
-
-
+    const currentYearPaidFeeTotal = paidFeeRecords.reduce(
+      (sum, pf) => sum + Number(pf.totalAmount || 0),
+      0
+    );
 
     const initialPaymentType =
-      payments.length > 0 ? payments[0].paymentType : null;
+      currentYearPaidFeeTotal > 0
+        ? "full_payment"
+        : payments.length > 0
+          ? payments[0].paymentType
+          : null;
 
     const selectedPaymentMethod =
-      initialPaymentType ?? (paymentmethod as string) ?? "full_payment";
+      currentYearPaidFeeTotal > 0
+        ? "full_payment"
+        : initialPaymentType ??
+        (paymentmethod as string) ??
+        "full_payment";
 
     // ✅ Build paidMap from actual payment records
     const paidMap = new Map<string, any>();
@@ -263,7 +281,7 @@ export const getFeeConfigurationByStudent = async (
               option.type === "installment" &&
               option.paymentOptionId === (feeConcession?.paymentOptionId ??
                 `${student.instituteId}-INSTALLMENT-2`)
-          );  
+          );
         }
 
         // Flatten each matched option's installments into the response
@@ -296,7 +314,7 @@ export const getFeeConfigurationByStudent = async (
               tuitionConcession: instDiscount,
               otherFeeConcession: 0,
               discountAmount: instDiscount,
-              payableAmount: payableInstAmount,
+              payableAmount: payableInstAmount - currentYearPaidFeeTotal,
               dueDate: inst.dueDate,
               paid: !!payment, // ✅ Will be true for installment 1 with full payment
               paidDate: payment?.paidDate || null, // ✅ Will be "2026-07-23T04:55:33.363Z"
@@ -317,8 +335,9 @@ export const getFeeConfigurationByStudent = async (
           tuitionConcession: totalConcessionAmount,
           otherFeeConcession: 0,
           concessionAmount: totalConcessionAmount,
-          payableAmount: totalPayableAmount,
+          payableAmount: totalPayableAmount - currentYearPaidFeeTotal,
           paymentMethod: selectedPaymentMethod,
+
           paymentOptions: processedOptions,
           ...(processedOptions.length === 0 && {
             message:
@@ -397,6 +416,11 @@ export const getFeeConfigurationByStudent = async (
         courseName: courseFee.name,
         paymentMethod: settingsDoc?.paymentMethod,
         initialPaymentType,
+        givenAmount: currentYearPaidFeeTotal,
+        givenAmountEntries: paidFeeRecords.map((pf) => ({
+          amount: pf.totalAmount,
+          entries: pf.entries || [],
+        })),
         unpaidYears,
         feeConcession: {
           referralIds: feeConcession?.referralIds || [],
@@ -514,11 +538,32 @@ export const getFeeConfigurationByadmin = async (
       status: "paid",
     }).lean();
 
+
+    const paidFeeRecords = await PaidFee.find({
+      studentId: student._id.toString(),
+      instituteId: student.instituteId,
+      programId: student.programId,
+      year: selectedYear,
+    }).lean();
+
+    const currentYearPaidFeeTotal = paidFeeRecords.reduce(
+      (sum, pf) => sum + Number(pf.totalAmount || 0),
+      0
+    );
+
     const initialPaymentType =
-      payments.length > 0 ? payments[0].paymentType : null;
+      currentYearPaidFeeTotal > 0
+        ? "full_payment"
+        : payments.length > 0
+          ? payments[0].paymentType
+          : null;
 
     const selectedPaymentMethod =
-      initialPaymentType ?? (paymentmethod as string) ?? "full_payment";
+      currentYearPaidFeeTotal > 0
+        ? "full_payment"
+        : initialPaymentType ??
+        (paymentmethod as string) ??
+        "full_payment";
 
     // Build paidMap from actual payment records
     const paidMap = new Map<string, any>();
@@ -604,7 +649,7 @@ export const getFeeConfigurationByadmin = async (
               tuitionConcession: instDiscount,
               otherFeeConcession: 0,
               discountAmount: instDiscount,
-              payableAmount: payableInstAmount,
+              payableAmount: payableInstAmount - currentYearPaidFeeTotal,
               dueDate: inst.dueDate,
               paid: !!payment,
               paidDate: payment?.paidDate || null,
@@ -624,7 +669,7 @@ export const getFeeConfigurationByadmin = async (
           tuitionConcession: totalConcessionAmount,
           otherFeeConcession: 0,
           concessionAmount: totalConcessionAmount,
-          payableAmount: totalPayableAmount,
+          payableAmount: totalPayableAmount - currentYearPaidFeeTotal,
           paymentMethod: selectedPaymentMethod,
           paymentOptions: processedOptions,
           ...(processedOptions.length === 0 && {
@@ -694,6 +739,11 @@ export const getFeeConfigurationByadmin = async (
         courseName: courseFee.name,
         paymentMethod: settingsDoc?.paymentMethod,
         unpaidYears,
+        givenAmount: currentYearPaidFeeTotal,
+        givenAmountEntries: paidFeeRecords.map((pf) => ({
+          amount: pf.totalAmount,
+          entries: pf.entries || [],
+        })),
         initialPaymentType,
         feeConcession: {
           referralIds: feeConcession?.referralIds || [],
