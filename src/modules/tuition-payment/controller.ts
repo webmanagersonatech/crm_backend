@@ -88,7 +88,7 @@ export const createRazorpayPayment = async (
 ): Promise<Response> => {
   try {
     const { year, installmentNumber, paymentOptionId } = req.body; // Add paymentOptionId
-    console.log(req.body, "Payment Request Body");
+   
     const student = req.student;
 
     // Validate student
