@@ -3,17 +3,20 @@ import mongoose from "mongoose";
 import PaidFee from "./model";
 import Student from "../students/model";
 import Settings from "../settings/model";
+import { addPaidFeeSchema } from "./paidfee.sanitize";
 
 /* ─────────────────────────────────────────────
    Types
 ───────────────────────────────────────────── */
 
 interface CleanedEntry {
+  date: Date;              // ✅ added
   amount: number;
   description: string;
 }
 
 interface RawEntry {
+  date?: string | Date;    // ✅ added
   amount?: number | string;
   description?: string;
 }
@@ -23,12 +26,27 @@ interface RawEntry {
 ───────────────────────────────────────────── */
 
 const cleanEntries = (entries: RawEntry[]): CleanedEntry[] => {
-  return entries.map((e) => {
+  return entries.map((e, index) => {
+    const label = `Entry ${index + 1}`;
+
+    // ── date is required ──────────────────────────────────────
+    if (!e.date) {
+      throw new Error(`${label}: Date is required`);
+    }
+
+    const parsedDate = new Date(e.date);
+    if (isNaN(parsedDate.getTime())) {
+      throw new Error(`${label}: Invalid date`);
+    }
+
+    // ── amount is required + must be > 0 ──────────────────────
     const amt = Number(e.amount);
     if (isNaN(amt) || amt <= 0) {
-      throw new Error("Each entry must have a valid amount greater than 0");
+      throw new Error(`${label}: Amount must be greater than 0`);
     }
+
     return {
+      date: parsedDate,
       amount: amt,
       description: (e.description || "").trim(),
     };
@@ -73,7 +91,16 @@ export const addPaidFee = async (req: Request, res: Response) => {
       });
     }
 
-    const cleanedEntries: CleanedEntry[] = cleanEntries(entries);
+    // ── Clean + validate entries (date + amount required) ───────
+    let cleanedEntries: CleanedEntry[];
+    try {
+      cleanedEntries = cleanEntries(entries);
+    } catch (validationErr: any) {
+      return res.status(400).json({
+        success: false,
+        message: validationErr.message || "Invalid entries",
+      });
+    }
 
     // ── Find student ────────────────────────────────────────────
     const student = await Student.findById(studentId).select(
@@ -165,7 +192,16 @@ export const addPaidFee = async (req: Request, res: Response) => {
         const finalProgramId: string | undefined =
           programId || student.programId;
 
-        const cleanedEntries: CleanedEntry[] = cleanEntries(entries);
+        let cleanedEntries: CleanedEntry[];
+        try {
+          cleanedEntries = cleanEntries(entries);
+        } catch (validationErr: any) {
+          return res.status(400).json({
+            success: false,
+            message: validationErr.message || "Invalid entries",
+          });
+        }
+
         const totalAmount: number = sumEntries(cleanedEntries);
 
         const updated = await PaidFee.findOneAndUpdate(

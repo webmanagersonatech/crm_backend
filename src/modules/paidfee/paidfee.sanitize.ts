@@ -1,12 +1,19 @@
 import Joi from "joi";
 
-/* ── Single entry (amount + description) ── */
+/* ── Single entry (date + amount + description) ── */
 const paidFeeEntrySchema = Joi.object({
+  date: Joi.date().iso().required().messages({
+    "date.base": "Date must be a valid date",
+    "date.format": "Date must be in ISO format (YYYY-MM-DD)",
+    "any.required": "Date is required",
+  }),
+
   amount: Joi.number().positive().required().messages({
     "number.base": "Amount must be a number",
     "number.positive": "Amount must be greater than 0",
     "any.required": "Amount is required",
   }),
+
   description: Joi.string().allow("").trim().default(""),
 });
 

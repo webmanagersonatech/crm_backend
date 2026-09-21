@@ -1,6 +1,8 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+
 export interface IPaidFeeEntry {
+  date: Date;
   amount: number;
   description?: string;
 }
@@ -19,6 +21,10 @@ export interface IPaidFee extends Document {
 
 const PaidFeeEntrySchema = new Schema<IPaidFeeEntry>(
   {
+    date: {
+      type: Date,
+      required: [true, "Date is required for each entry"], 
+    },
     amount: { type: Number, required: true, min: 0 },
     description: { type: String, trim: true, default: "" },
   },
