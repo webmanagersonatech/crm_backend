@@ -1842,11 +1842,15 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
       });
     }
 
+    const hideTuitionFee =
+      student.admissionQuota?.toLowerCase() === "government" &&
+      ["sc", "st"].includes(student.community?.toLowerCase() || "");
+
     const settings = await Settings.findOne({
       instituteId: student.instituteId,
     }).select("logo");
 
-   
+
 
     const insuitelogo = settings?.logo || null;
 
@@ -1870,7 +1874,8 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
           id: student._id,
           studentId: student.studentId,
           firstname: student.firstname,
-          lastname: student.lastname,
+          dontshowtutionfee:hideTuitionFee,
+            lastname: student.lastname,
           insuitelogo,
           shownturtionfeepayment: showTuitionFeePayment,
           showhostelfeepayment: showHostelFeePayment,
