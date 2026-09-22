@@ -365,18 +365,13 @@ export const studentLogin = async (req: Request, res: Response) => {
       path: "/",
     });
 
-    // 🍪 Set INSTITUTE cookie (fresh from student)
-    // 🍪 Institute Cookie
+
+    // 🍪 Set INSTITUTE cookie
     res.cookie("instituteId", student.instituteId, {
       httpOnly: false,
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
-
-      // Production only
-      ...(isProduction && {
-        domain: ".sonastar.com",
-      }),
-
+      domain: ".sonastar.com",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -1865,7 +1860,7 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
     );
 
 
-    
+
 
     return res.status(200).json({
       success: true,
@@ -1874,8 +1869,8 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
           id: student._id,
           studentId: student.studentId,
           firstname: student.firstname,
-          dontshowtutionfee:hideTuitionFee,
-            lastname: student.lastname,
+          dontshowtutionfee: hideTuitionFee,
+          lastname: student.lastname,
           insuitelogo,
           shownturtionfeepayment: showTuitionFeePayment,
           showhostelfeepayment: showHostelFeePayment,
