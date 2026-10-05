@@ -127,6 +127,13 @@ ApplicationSchema.virtual("lead", {
   justOne: true,
 });
 
+ApplicationSchema.virtual("student", {
+  ref: "Student",
+  localField: "applicationId",
+  foreignField: "applicationId",
+  justOne: true,
+});
+
 
 // Pre-save: generate unique applicationId
 ApplicationSchema.pre<IApplication>("save", async function (next) {

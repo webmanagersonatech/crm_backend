@@ -9,6 +9,7 @@ import FeeConcession from '../fees-concession/model';
 import { AuthRequest } from '../auth';
 import Permission from '../permissions/model'
 import PaidFee from '../paidfee/model';
+import StudentFeeStructure from '../StudentFeeStructure/model';
 
 export const upsertFeeConfiguration = async (
   req: Request,
@@ -108,6 +109,8 @@ export const getFeeConfigurationByInstitute = async (
 };
 
 
+const round2 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 export const getFeeConfigurationByStudent = async (
   req: StudentAuthRequest,
   res: Response
@@ -122,6 +125,7 @@ export const getFeeConfigurationByStudent = async (
         message: "Not authorized",
       });
     }
+
     const student = await Student.findById(studentId);
 
     if (!student) {
@@ -142,31 +146,51 @@ export const getFeeConfigurationByStudent = async (
       instituteId: student.instituteId,
     }).select("gstPercentage paymentMethod courseYears");
 
+    const selectedYear = Number(chooseunpaidyear || student.year || 1);
+    const currentYear = Number(student.year || 1);
 
-    const feeConfiguration = await FeeConfiguration.findOne({
+    // ------------------------------------------------------------------
+    // 1) STUDENT FEE STRUCTURE (snapshot) – fetched once for ALL years.
+    //    Used for: selected-year data + unpaidYears calculation.
+    // ------------------------------------------------------------------
+    const studentFeeStructures = await StudentFeeStructure.find({
+      studentId: student._id,
+      instituteId: student.instituteId,
+      programId: student.programId,
+    }).lean();
+
+    const yearSnapshot: any = studentFeeStructures.find(
+      (rec: any) => Number(rec.year) === selectedYear
+    );
+
+    // ------------------------------------------------------------------
+    // 2) FEE CONFIGURATION – only mandatory when no snapshot exists
+    // ------------------------------------------------------------------
+    const feeConfiguration: any = await FeeConfiguration.findOne({
       instituteId: student.instituteId,
     });
 
-    if (!feeConfiguration) {
+    if (!yearSnapshot && !feeConfiguration) {
       return res.status(404).json({
         success: false,
         message: "Fee configuration not found",
       });
     }
 
-
-
-    const courseFee = feeConfiguration.courseFeeStructure.find(
+    const courseFee: any = feeConfiguration?.courseFeeStructure?.find(
       (course: any) => course.courseId === student.programId
     );
 
-    if (!courseFee) {
+    if (!yearSnapshot && !courseFee) {
       return res.status(404).json({
         success: false,
         message: "Fee structure not found for this Course",
       });
     }
 
+    // ------------------------------------------------------------------
+    // 3) CONCESSION (referrals live in FeeConfiguration)
+    // ------------------------------------------------------------------
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
@@ -174,11 +198,10 @@ export const getFeeConfigurationByStudent = async (
       status: "approved",
     }).select("referralIds paymentOptionId");
 
-    // Match referral IDs with configured referrals
     let matchedReferrals: any[] = [];
     let concessionPercentage = 0;
 
-    if (feeConcession?.referralIds?.length) {
+    if (feeConcession?.referralIds?.length && feeConfiguration?.referrals?.length) {
       matchedReferrals = feeConfiguration.referrals.filter((ref: any) =>
         feeConcession.referralIds.includes(ref.referralId)
       );
@@ -189,20 +212,9 @@ export const getFeeConfigurationByStudent = async (
       );
     }
 
-    // Which payment method was requested — default to full_payment
-
-    const selectedYear = Number(
-      chooseunpaidyear || student.year || 1
-    );
-    // ✅ FIX: Fetch actual payment records for this student
-    const payments = await TuitionFees.find({
-      year: selectedYear,
-      studentId: student.studentId,
-      instituteId: student.instituteId,
-      courseId: student.programId,
-      status: "paid",
-    }).lean();
-
+    // ------------------------------------------------------------------
+    // 4) PAID FEE RECORDS (only for givenAmount info)
+    // ------------------------------------------------------------------
     const paidFeeRecords = await PaidFee.find({
       studentId: student._id.toString(),
       instituteId: student.instituteId,
@@ -215,197 +227,187 @@ export const getFeeConfigurationByStudent = async (
       0
     );
 
-    const initialPaymentType =
-      currentYearPaidFeeTotal > 0
+    // ------------------------------------------------------------------
+    // 5) PAYMENT METHOD
+    //    snapshot exists  -> locked to what the student already chose
+    //    no snapshot      -> requested method (default full_payment)
+    // ------------------------------------------------------------------
+    const initialPaymentType: string | null = yearSnapshot
+      ? yearSnapshot.paymentOption?.type ?? null
+      : currentYearPaidFeeTotal > 0
         ? "full_payment"
-        : payments.length > 0
-          ? payments[0].paymentType
-          : null;
+        : null;
 
-    const selectedPaymentMethod =
-      currentYearPaidFeeTotal > 0
-        ? "full_payment"
-        : initialPaymentType ??
-        (paymentmethod as string) ??
-        "full_payment";
+    const selectedPaymentMethod: string =
+      initialPaymentType ?? (paymentmethod as string) ?? "full_payment";
 
-    // ✅ Build paidMap from actual payment records
-    const paidMap = new Map<string, any>();
+    // ------------------------------------------------------------------
+    // 6) YEAR SOURCE: snapshot first, else fee configuration
+    // ------------------------------------------------------------------
+    const yearsSource: any[] = yearSnapshot
+      ? [
+        {
+          year: yearSnapshot.year,
+          amount: yearSnapshot.totalAmount,
+          tuitionFee: yearSnapshot.tuitionFee,
+          otherFee: yearSnapshot.otherFee,
+          otherFeeDescription: yearSnapshot.otherFeeDescription,
+          paymentOptions: yearSnapshot.paymentOption
+            ? [yearSnapshot.paymentOption]
+            : [],
+        },
+      ]
+      : (courseFee.years || []).filter(
+        (y: any) => Number(y.year) === selectedYear
+      );
 
-    payments.forEach((payment: any) => {
-      // Construct key matching the format used in the response
-      const key = `${payment.courseId}-${payment.year}-${payment.paymentOptionId}-${payment.installmentNumber}`;
-      paidMap.set(key, {
-        paid: true,
-        paymentId: payment.paymentId,
-        paidDate: payment.paidDate,
-        orderId: payment.orderId,
-        amount: payment.amount,
-        totalAmount: payment.totalAmount,
-      });
+    const enrichedYears = yearsSource.map((year: any) => {
+      const originalTotalAmount = year.amount;
+      const tuitionFee = Number(year.tuitionFee || 0);
+      const otherFee = Number(year.otherFee || 0);
+      const feedescription = year.otherFeeDescription;
+
+      // Concession on tuition fee only
+      const tuitionConcession = round2((tuitionFee * concessionPercentage) / 100);
+      const totalPayableAmount = tuitionFee - tuitionConcession + otherFee;
+
+      const paymentOptions = year.paymentOptions || [];
+
+      // Pick which option(s) to show
+      let filteredOptions: any[] = [];
+
+      if (yearSnapshot) {
+        // Snapshot already holds the single option the student chose
+        filteredOptions = paymentOptions;
+      } else if (selectedPaymentMethod === "full_payment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) => option.type === "full_payment"
+        );
+      } else if (selectedPaymentMethod === "installment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) =>
+            option.type === "installment" &&
+            option.paymentOptionId ===
+            (feeConcession?.paymentOptionId ??
+              `${student.instituteId}-INSTALLMENT-2`)
+        );
+      }
+
+      const processedOptions = filteredOptions.flatMap((option: any) =>
+        (option.installments || []).map((inst: any) => {
+          const isPaid = inst.status === "paid";
+
+          const instTuitionFee = Number(inst.tuitionFee || 0);
+          const instOtherFee = Number(inst.otherFee || 0);
+
+          const instTuitionConcession = round2(
+            (instTuitionFee * concessionPercentage) / 100
+          );
+          const payableInstAmount =
+            instTuitionFee - instTuitionConcession + instOtherFee;
+
+          // Without snapshot, keep the old behaviour of deducting what is
+          // already paid for the year. With snapshot, per-installment status
+          // already tracks payments, so nothing extra is deducted.
+          const payable = isPaid
+            ? 0
+            : yearSnapshot
+              ? payableInstAmount
+              : payableInstAmount - currentYearPaidFeeTotal;
+
+          return {
+            paymentOptionId: option.paymentOptionId,
+            name: option.name,
+            number: inst.number,
+            type: option.type,
+            originalAmount: inst.amount,
+            tuitionFee: instTuitionFee,
+            otherFee: instOtherFee,
+
+            tuitionConcession: isPaid ? 0 : instTuitionConcession,
+            otherFeeConcession: 0,
+            discountAmount: isPaid ? 0 : instTuitionConcession,
+            payableAmount: round2(Math.max(payable, 0)),
+            dueDate: inst.dueDate,
+            paid: isPaid,
+            paidDate: inst.paidDate ?? null,
+            paymentId: inst.paymentId ?? null,
+            orderId: null,
+            paymentAmount: isPaid ? inst.paidAmount ?? null : null,
+          };
+        })
+      );
+
+      // Year payable:
+      //   snapshot    -> sum of installments still pending
+      //   no snapshot -> total payable minus already paid
+      const yearPayable = yearSnapshot
+        ? processedOptions.reduce(
+          (sum: number, i: any) => sum + Number(i.payableAmount || 0),
+          0
+        )
+        : totalPayableAmount - currentYearPaidFeeTotal;
+
+      return {
+        year: year.year,
+        originalAmount: originalTotalAmount,
+        tuitionFee,
+        FeeDescription: feedescription,
+        otherFee,
+        concessionPercentage,
+        tuitionConcession,
+        otherFeeConcession: 0,
+        concessionAmount: tuitionConcession,
+        payableAmount: round2(Math.max(yearPayable, 0)),
+        paymentMethod: selectedPaymentMethod,
+        source: yearSnapshot ? "studentFeeStructure" : "feeConfiguration",
+
+        paymentOptions: processedOptions,
+        ...(processedOptions.length === 0 && {
+          message:
+            selectedPaymentMethod === "installment"
+              ? "Installment option not available for this course"
+              : "Full payment option not available for this course",
+        }),
+      };
     });
 
-    // Build response based on payment method
-    const enrichedYears = courseFee.years
-      .filter(
-        (year: any) => Number(year.year) === selectedYear
-      )
-      .map((year: any) => {
-        const originalTotalAmount = year.amount;
-        const tuitionFee = year.tuitionFee;
-        const otherFee = year.otherFee;
-        const feedescription = year.otherFeeDescription;
-
-        // Calculate concession on tuition fee only
-        const tuitionConcession = (tuitionFee * concessionPercentage) / 100;
-        const discountedTuitionFee = tuitionFee - tuitionConcession;
-
-        // Other fee remains unchanged (add-on)
-        const totalPayableAmount = discountedTuitionFee + otherFee;
-
-        // Total concession amount (only from tuition fee)
-        const totalConcessionAmount = tuitionConcession;
-
-        const paymentOptions = year.paymentOptions || [];
-
-        // Filter payment options based on selected method.
-        let filteredOptions: any[] = [];
-
-        if (selectedPaymentMethod === "full_payment") {
-          filteredOptions = paymentOptions.filter(
-            (option: any) => option.type === "full_payment"
-          );
-        } else if (selectedPaymentMethod === "installment") {
-          filteredOptions = paymentOptions.filter(
-            (option: any) =>
-              option.type === "installment" &&
-              option.paymentOptionId === (feeConcession?.paymentOptionId ??
-                `${student.instituteId}-INSTALLMENT-2`)
-          );
-        }
-
-        // Flatten each matched option's installments into the response
-        const processedOptions = filteredOptions.flatMap((option: any) =>
-          (option.installments || []).map((inst: any) => {
-            // ✅ Use the exact same key format for lookups
-            const optionKey = `${courseFee.courseId}-${year.year}-${option.paymentOptionId}-${inst.number}`;
-            const payment = paidMap.get(optionKey);
-
-            // Calculate concession on tuition fee portion of installment only
-            const installmentTuitionFee = inst.tuitionFee;
-            const installmentOtherFee = inst.otherFee;
-
-            const installmentTuitionConcession = (installmentTuitionFee * concessionPercentage) / 100;
-            const discountedInstallmentTuition = installmentTuitionFee - installmentTuitionConcession;
-
-            // Other fee remains unchanged
-            const payableInstAmount = discountedInstallmentTuition + installmentOtherFee;
-            const instDiscount = installmentTuitionConcession;
-
-            return {
-              paymentOptionId: option.paymentOptionId,
-              name: option.name,
-              number: inst.number,
-              type: option.type,
-              originalAmount: inst.amount,
-              tuitionFee: installmentTuitionFee,
-              otherFee: installmentOtherFee,
-
-              tuitionConcession: instDiscount,
-              otherFeeConcession: 0,
-              discountAmount: instDiscount,
-              payableAmount: payableInstAmount - currentYearPaidFeeTotal,
-              dueDate: inst.dueDate,
-              paid: !!payment, // ✅ Will be true for installment 1 with full payment
-              paidDate: payment?.paidDate || null, // ✅ Will be "2026-07-23T04:55:33.363Z"
-              paymentId: payment?.paymentId || null, // ✅ Will be "pay_TGotTkaJqGggZt"
-              orderId: payment?.orderId || null,
-              paymentAmount: payment?.amount || null,
-            };
-          })
-        );
-
-        return {
-          year: year.year,
-          originalAmount: originalTotalAmount,
-          tuitionFee: tuitionFee,
-          FeeDescription: feedescription,
-          otherFee: otherFee,
-          concessionPercentage,
-          tuitionConcession: totalConcessionAmount,
-          otherFeeConcession: 0,
-          concessionAmount: totalConcessionAmount,
-          payableAmount: totalPayableAmount - currentYearPaidFeeTotal,
-          paymentMethod: selectedPaymentMethod,
-
-          paymentOptions: processedOptions,
-          ...(processedOptions.length === 0 && {
-            message:
-              selectedPaymentMethod === "installment"
-                ? "Installment option not available for this course"
-                : "Full payment option not available for this course",
-          }),
-        };
-      });
-
-
-
-    const allpayments = await TuitionFees.find({
-      studentId: student.studentId,
-      instituteId: student.instituteId,
-      courseId: student.programId,
-      status: "paid",
-    }).lean();
-
-    const currentYear = Number(student.year || 1);
-
+    // ------------------------------------------------------------------
+    // 7) UNPAID PREVIOUS YEARS (reuses studentFeeStructures from above)
+    // ------------------------------------------------------------------
     const unpaidYears: number[] = [];
 
-    courseFee.years
-      .filter((year: any) => Number(year.year) < currentYear)
-      .forEach((year: any) => {
-        const yearNumber = Number(year.year);
-        const paymentOptions = year.paymentOptions || [];
+    for (let yearNumber = 1; yearNumber < currentYear; yearNumber++) {
+      const yearFeeRecord: any = studentFeeStructures.find(
+        (rec: any) => Number(rec.year) === yearNumber
+      );
 
-        // Get all paid payments for this year
-        const yearPayments = allpayments.filter(
-          (payment: any) => Number(payment.year) === yearNumber
-        );
+      // No record for this year -> unpaid
+      if (!yearFeeRecord) {
+        unpaidYears.push(yearNumber);
+        continue;
+      }
 
-        // Check whether all configured payment installments are paid
-        let yearFullyPaid = false;
+      const installments = yearFeeRecord.paymentOption?.installments || [];
 
-        for (const option of paymentOptions) {
-          const installments = option.installments || [];
+      // No installments configured -> unpaid
+      if (!installments.length) {
+        unpaidYears.push(yearNumber);
+        continue;
+      }
 
-          if (!installments.length) continue;
+      // ANY installment not "paid" -> year is unpaid
+      const hasPending = installments.some(
+        (inst: any) => inst.status !== "paid"
+      );
 
-          const paidInstallments = installments.filter((inst: any) =>
-            yearPayments.some(
-              (payment: any) =>
-                payment.paymentOptionId === option.paymentOptionId &&
-                Number(payment.installmentNumber) === Number(inst.number)
-            )
-          );
+      if (hasPending) {
+        unpaidYears.push(yearNumber);
+      }
+    }
 
-          if (paidInstallments.length === installments.length) {
-            yearFullyPaid = true;
-            break;
-          }
-        }
-
-        // If no complete payment option is paid, year is unpaid
-        if (!yearFullyPaid) {
-          unpaidYears.push(yearNumber);
-        }
-      });
-
-    // Current year first
-    unpaidYears.sort((a, b) => {
-      if (a === currentYear) return -1;
-      if (b === currentYear) return 1;
-      return b - a;
-    });
+    // Previous years descending (2, 1)
+    unpaidYears.sort((a, b) => b - a);
 
     return res.status(200).json({
       success: true,
@@ -413,7 +415,7 @@ export const getFeeConfigurationByStudent = async (
         studentId: student.studentId,
         studentName: `${student.firstname} ${student.lastname}`,
         programId: student.programId,
-        courseName: courseFee.name,
+        courseName: yearSnapshot?.courseName ?? courseFee?.name,
         paymentMethod: settingsDoc?.paymentMethod,
         initialPaymentType,
         givenAmount: currentYearPaidFeeTotal,
@@ -441,6 +443,7 @@ export const getFeeConfigurationByStudent = async (
   }
 };
 
+
 export const getFeeConfigurationByadmin = async (
   req: AuthRequest,
   res: Response
@@ -448,7 +451,7 @@ export const getFeeConfigurationByadmin = async (
   try {
     const user = req.user;
 
-    if (!user) return res.status(401).json({ message: 'Not authorized' });
+    if (!user) return res.status(401).json({ message: "Not authorized" });
 
     const { paymentmethod, chooseunpaidyear } = req.query;
     const { studentId } = req.params;
@@ -480,29 +483,51 @@ export const getFeeConfigurationByadmin = async (
       instituteId: student.instituteId,
     }).select("gstPercentage paymentMethod");
 
-    const feeConfiguration = await FeeConfiguration.findOne({
+    const selectedYear = Number(chooseunpaidyear || student.year || 1);
+    const currentYear = Number(student.year || 1);
+
+    // ------------------------------------------------------------------
+    // 1) STUDENT FEE STRUCTURE (snapshot) – fetched once for ALL years.
+    //    Used for: selected-year data + unpaidYears calculation.
+    // ------------------------------------------------------------------
+    const studentFeeStructures = await StudentFeeStructure.find({
+      studentId: student._id,
+      instituteId: student.instituteId,
+      programId: student.programId,
+    }).lean();
+
+    const yearSnapshot: any = studentFeeStructures.find(
+      (rec: any) => Number(rec.year) === selectedYear
+    );
+
+    // ------------------------------------------------------------------
+    // 2) FEE CONFIGURATION – only mandatory when no snapshot exists
+    // ------------------------------------------------------------------
+    const feeConfiguration: any = await FeeConfiguration.findOne({
       instituteId: student.instituteId,
     });
 
-    if (!feeConfiguration) {
+    if (!yearSnapshot && !feeConfiguration) {
       return res.status(404).json({
         success: false,
         message: "Fee configuration not found",
       });
     }
 
-    const courseFee = feeConfiguration.courseFeeStructure.find(
+    const courseFee: any = feeConfiguration?.courseFeeStructure?.find(
       (course: any) => course.courseId === student.programId
     );
 
-    if (!courseFee) {
+    if (!yearSnapshot && !courseFee) {
       return res.status(404).json({
         success: false,
         message: "Fee structure not found for this Course",
       });
     }
 
-    // Get fee concession with paymentOptionId
+    // ------------------------------------------------------------------
+    // 3) CONCESSION (referrals live in FeeConfiguration)
+    // ------------------------------------------------------------------
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
@@ -510,11 +535,10 @@ export const getFeeConfigurationByadmin = async (
       status: "approved",
     }).select("referralIds paymentOptionId");
 
-    // Match referral IDs with configured referrals
     let matchedReferrals: any[] = [];
     let concessionPercentage = 0;
 
-    if (feeConcession?.referralIds?.length) {
+    if (feeConcession?.referralIds?.length && feeConfiguration?.referrals?.length) {
       matchedReferrals = feeConfiguration.referrals.filter((ref: any) =>
         feeConcession.referralIds.includes(ref.referralId)
       );
@@ -525,20 +549,9 @@ export const getFeeConfigurationByadmin = async (
       );
     }
 
-    // Get paid transactions
-    const selectedYear = Number(
-      chooseunpaidyear || student.year || 1
-    );
-
-    const payments = await TuitionFees.find({
-      year: selectedYear,
-      studentId: student.studentId,
-      instituteId: student.instituteId,
-      courseId: student.programId,
-      status: "paid",
-    }).lean();
-
-
+    // ------------------------------------------------------------------
+    // 4) PAID FEE RECORDS (only for givenAmount info)
+    // ------------------------------------------------------------------
     const paidFeeRecords = await PaidFee.find({
       studentId: student._id.toString(),
       instituteId: student.instituteId,
@@ -551,183 +564,186 @@ export const getFeeConfigurationByadmin = async (
       0
     );
 
-    const initialPaymentType =
-      currentYearPaidFeeTotal > 0
+    // ------------------------------------------------------------------
+    // 5) PAYMENT METHOD
+    //    snapshot exists  -> locked to what the student already chose
+    //    no snapshot      -> requested method (default full_payment)
+    // ------------------------------------------------------------------
+    const initialPaymentType: string | null = yearSnapshot
+      ? yearSnapshot.paymentOption?.type ?? null
+      : currentYearPaidFeeTotal > 0
         ? "full_payment"
-        : payments.length > 0
-          ? payments[0].paymentType
-          : null;
+        : null;
 
-    const selectedPaymentMethod =
-      currentYearPaidFeeTotal > 0
-        ? "full_payment"
-        : initialPaymentType ??
-        (paymentmethod as string) ??
-        "full_payment";
+    const selectedPaymentMethod: string =
+      initialPaymentType ?? (paymentmethod as string) ?? "full_payment";
 
-    // Build paidMap from actual payment records
-    const paidMap = new Map<string, any>();
+    // ------------------------------------------------------------------
+    // 6) YEAR SOURCE: snapshot first, else fee configuration
+    // ------------------------------------------------------------------
+    const yearsSource: any[] = yearSnapshot
+      ? [
+        {
+          year: yearSnapshot.year,
+          amount: yearSnapshot.totalAmount,
+          tuitionFee: yearSnapshot.tuitionFee,
+          otherFee: yearSnapshot.otherFee,
+          otherFeeDescription: yearSnapshot.otherFeeDescription,
+          paymentOptions: yearSnapshot.paymentOption
+            ? [yearSnapshot.paymentOption]
+            : [],
+        },
+      ]
+      : (courseFee.years || []).filter(
+        (y: any) => Number(y.year) === selectedYear
+      );
 
-    payments.forEach((payment: any) => {
-      // Construct key matching the format used in the response
-      const key = `${payment.courseId}-${payment.year}-${payment.paymentOptionId}-${payment.installmentNumber}`;
-      paidMap.set(key, {
-        paid: true,
-        paymentId: payment.paymentId,
-        paidDate: payment.paidDate,
-        orderId: payment.orderId,
-        amount: payment.amount,
-        totalAmount: payment.totalAmount,
-      });
+    const enrichedYears = yearsSource.map((year: any) => {
+      const originalTotalAmount = year.amount;
+      const tuitionFee = Number(year.tuitionFee || 0);
+      const otherFee = Number(year.otherFee || 0);
+      const feedescription = year.otherFeeDescription;
+
+      // Concession on tuition fee only
+      const tuitionConcession = round2((tuitionFee * concessionPercentage) / 100);
+      const totalPayableAmount = tuitionFee - tuitionConcession + otherFee;
+
+      const paymentOptions = year.paymentOptions || [];
+
+      // Pick which option(s) to show
+      let filteredOptions: any[] = [];
+
+      if (yearSnapshot) {
+        // Snapshot already holds the single option the student chose
+        filteredOptions = paymentOptions;
+      } else if (selectedPaymentMethod === "full_payment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) => option.type === "full_payment"
+        );
+      } else if (selectedPaymentMethod === "installment") {
+        filteredOptions = paymentOptions.filter(
+          (option: any) =>
+            option.type === "installment" &&
+            option.paymentOptionId ===
+            (feeConcession?.paymentOptionId ??
+              `${student.instituteId}-INSTALLMENT-2`)
+        );
+      }
+
+      const processedOptions = filteredOptions.flatMap((option: any) =>
+        (option.installments || []).map((inst: any) => {
+          const isPaid = inst.status === "paid";
+
+          const instTuitionFee = Number(inst.tuitionFee || 0);
+          const instOtherFee = Number(inst.otherFee || 0);
+
+          const instTuitionConcession = round2(
+            (instTuitionFee * concessionPercentage) / 100
+          );
+          const payableInstAmount =
+            instTuitionFee - instTuitionConcession + instOtherFee;
+
+          // Without snapshot, keep the old behaviour of deducting what is
+          // already paid for the year. With snapshot, per-installment status
+          // already tracks payments, so nothing extra is deducted.
+          const payable = isPaid
+            ? 0
+            : yearSnapshot
+              ? payableInstAmount
+              : payableInstAmount - currentYearPaidFeeTotal;
+
+          return {
+            paymentOptionId: option.paymentOptionId,
+            name: option.name,
+            number: inst.number,
+            type: option.type,
+            originalAmount: inst.amount,
+            tuitionFee: instTuitionFee,
+            otherFee: instOtherFee,
+
+            tuitionConcession: isPaid ? 0 : instTuitionConcession,
+            otherFeeConcession: 0,
+            discountAmount: isPaid ? 0 : instTuitionConcession,
+            payableAmount: round2(Math.max(payable, 0)),
+            dueDate: inst.dueDate,
+            paid: isPaid,
+            paidDate: inst.paidDate ?? null,
+            paymentId: inst.paymentId ?? null,
+            orderId: null,
+            paymentAmount: isPaid ? inst.paidAmount ?? null : null,
+          };
+        })
+      );
+
+      // Year payable:
+      //   snapshot    -> sum of installments still pending
+      //   no snapshot -> total payable minus already paid
+      const yearPayable = yearSnapshot
+        ? processedOptions.reduce(
+          (sum: number, i: any) => sum + Number(i.payableAmount || 0),
+          0
+        )
+        : totalPayableAmount - currentYearPaidFeeTotal;
+
+      return {
+        year: year.year,
+        originalAmount: originalTotalAmount,
+        tuitionFee,
+        FeeDescription: feedescription,
+        otherFee,
+        concessionPercentage,
+        tuitionConcession,
+        otherFeeConcession: 0,
+        concessionAmount: tuitionConcession,
+        payableAmount: round2(Math.max(yearPayable, 0)),
+        paymentMethod: selectedPaymentMethod,
+        source: yearSnapshot ? "studentFeeStructure" : "feeConfiguration",
+
+        paymentOptions: processedOptions,
+        ...(processedOptions.length === 0 && {
+          message:
+            selectedPaymentMethod === "installment"
+              ? "Installment option not available for this course"
+              : "Full payment option not available for this course",
+        }),
+      };
     });
 
-    // Build response based on payment method
-    const enrichedYears = courseFee.years
-      .filter(
-        (year: any) =>
-          Number(year.year) === selectedYear
-      )
-      .map((year: any) => {
-        const originalTotalAmount = year.amount;
-        const tuitionFee = year.tuitionFee;
-        const otherFee = year.otherFee;
-
-        // Calculate concession on tuition fee only
-        const tuitionConcession = (tuitionFee * concessionPercentage) / 100;
-        const discountedTuitionFee = tuitionFee - tuitionConcession;
-
-        // Other fee remains unchanged (add-on)
-        const totalPayableAmount = discountedTuitionFee + otherFee;
-
-        // Total concession amount (only from tuition fee)
-        const totalConcessionAmount = tuitionConcession;
-
-        const paymentOptions = year.paymentOptions || [];
-
-        // Filter payment options based on selected method.
-        let filteredOptions: any[] = [];
-
-        if (selectedPaymentMethod === "full_payment") {
-          filteredOptions = paymentOptions.filter(
-            (option: any) => option.type === "full_payment"
-          );
-        } else if (selectedPaymentMethod === "installment") {
-          filteredOptions = paymentOptions.filter(
-            (option: any) =>
-              option.type === "installment" &&
-              option.paymentOptionId === (feeConcession?.paymentOptionId ??
-                `${student.instituteId}-INSTALLMENT-2`)
-          );
-        }
-
-        // Flatten each matched option's installments into the response
-        const processedOptions = filteredOptions.flatMap((option: any) =>
-          (option.installments || []).map((inst: any) => {
-            // Use the exact same key format for lookups
-            const optionKey = `${courseFee.courseId}-${year.year}-${option.paymentOptionId}-${inst.number}`;
-            const payment = paidMap.get(optionKey);
-
-            // Calculate concession on tuition fee portion of installment only
-            const installmentTuitionFee = inst.tuitionFee;
-            const installmentOtherFee = inst.otherFee;
-
-            const installmentTuitionConcession = (installmentTuitionFee * concessionPercentage) / 100;
-            const discountedInstallmentTuition = installmentTuitionFee - installmentTuitionConcession;
-
-            // Other fee remains unchanged
-            const payableInstAmount = discountedInstallmentTuition + installmentOtherFee;
-            const instDiscount = installmentTuitionConcession;
-
-            return {
-              paymentOptionId: option.paymentOptionId,
-              name: option.name,
-              number: inst.number,
-              type: option.type,
-              originalAmount: inst.amount,
-              tuitionFee: installmentTuitionFee,
-              otherFee: installmentOtherFee,
-              tuitionConcession: instDiscount,
-              otherFeeConcession: 0,
-              discountAmount: instDiscount,
-              payableAmount: payableInstAmount - currentYearPaidFeeTotal,
-              dueDate: inst.dueDate,
-              paid: !!payment,
-              paidDate: payment?.paidDate || null,
-              paymentId: payment?.paymentId || null,
-              orderId: payment?.orderId || null,
-              paymentAmount: payment?.amount || null,
-            };
-          })
-        );
-
-        return {
-          year: year.year,
-          originalAmount: originalTotalAmount,
-          tuitionFee: tuitionFee,
-          otherFee: otherFee,
-          concessionPercentage,
-          tuitionConcession: totalConcessionAmount,
-          otherFeeConcession: 0,
-          concessionAmount: totalConcessionAmount,
-          payableAmount: totalPayableAmount - currentYearPaidFeeTotal,
-          paymentMethod: selectedPaymentMethod,
-          paymentOptions: processedOptions,
-          ...(processedOptions.length === 0 && {
-            message:
-              selectedPaymentMethod === "installment"
-                ? "Installment option not available for this course"
-                : "Full payment option not available for this course",
-          }),
-        };
-      });
-
-    const allpayments = await TuitionFees.find({
-      studentId: student.studentId,
-      instituteId: student.instituteId,
-      courseId: student.programId,
-      status: "paid",
-    }).lean();
-
-    const currentYear = Number(student.year || 1);
-
+    // ------------------------------------------------------------------
+    // 7) UNPAID PREVIOUS YEARS (reuses studentFeeStructures from above)
+    // ------------------------------------------------------------------
     const unpaidYears: number[] = [];
 
-    courseFee.years
-      .filter((year: any) => Number(year.year) < currentYear)
-      .forEach((year: any) => {
-        const yearNumber = Number(year.year);
-        const paymentOptions = year.paymentOptions || [];
+    for (let yearNumber = 1; yearNumber < currentYear; yearNumber++) {
+      const yearFeeRecord: any = studentFeeStructures.find(
+        (rec: any) => Number(rec.year) === yearNumber
+      );
 
-        const yearPayments = allpayments.filter(
-          (payment: any) => Number(payment.year) === yearNumber
-        );
+      // No record for this year -> unpaid
+      if (!yearFeeRecord) {
+        unpaidYears.push(yearNumber);
+        continue;
+      }
 
-        let yearFullyPaid = false;
+      const installments = yearFeeRecord.paymentOption?.installments || [];
 
-        for (const option of paymentOptions) {
-          const installments = option.installments || [];
+      // No installments configured -> unpaid
+      if (!installments.length) {
+        unpaidYears.push(yearNumber);
+        continue;
+      }
 
-          if (!installments.length) continue;
+      // ANY installment not "paid" -> year is unpaid
+      const hasPending = installments.some(
+        (inst: any) => inst.status !== "paid"
+      );
 
-          const paidInstallments = installments.filter((inst: any) =>
-            yearPayments.some(
-              (payment: any) =>
-                payment.paymentOptionId === option.paymentOptionId &&
-                Number(payment.installmentNumber) === Number(inst.number)
-            )
-          );
+      if (hasPending) {
+        unpaidYears.push(yearNumber);
+      }
+    }
 
-          if (paidInstallments.length === installments.length) {
-            yearFullyPaid = true;
-            break;
-          }
-        }
-
-        if (!yearFullyPaid) {
-          unpaidYears.push(yearNumber);
-        }
-      });
-
+    // Previous years descending (2, 1)
     unpaidYears.sort((a, b) => b - a);
 
     return res.status(200).json({
@@ -736,7 +752,7 @@ export const getFeeConfigurationByadmin = async (
         studentId: student.studentId,
         studentName: `${student.firstname} ${student.lastname}`,
         programId: student.programId,
-        courseName: courseFee.name,
+        courseName: yearSnapshot?.courseName ?? courseFee?.name,
         paymentMethod: settingsDoc?.paymentMethod,
         unpaidYears,
         givenAmount: currentYearPaidFeeTotal,

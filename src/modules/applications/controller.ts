@@ -157,7 +157,7 @@ const generateUniqueUsername = async (
   return username;
 };
 
-const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number", "email"];
+const ALLOWED_FILTER_TYPES = ["select", "radio", "checkbox", "text", "number", "date", "email"];
 
 const extractKeyOptionsForFilter = (sections: any[]) => {
   const result: any[] = [];
@@ -2110,6 +2110,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
           path: "lead",          // ← virtual from Application
           select: "_id",
         },
+
       ]
     }
 
@@ -2442,6 +2443,10 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
         {
           path: "lead",
           select: "_id",
+        },
+        {
+          path: "student",
+          select: "_id  classSection admissionNumber ",
         },
       ]);
 
