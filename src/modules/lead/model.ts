@@ -25,7 +25,7 @@ export interface ILead extends Document {
   communication?: string;
   followUpDate?: Date;
   counsellorName?: string; // optional
-  leadSource: "offline" | "online" | "application";
+  leadSource: "offline" | "online" | "application" | "sm-26-paid";
   followups: {
     status: string;
     communication?: string;
@@ -79,7 +79,7 @@ const LeadSchema = new Schema<ILead>(
     counsellorName: { type: String }, // optional
     leadSource: {
       type: String,
-      enum: ["offline", "online", "application"],
+      enum: ["offline", "online", "application", "sm-26-paid"],
       default: "offline",
     },
 
