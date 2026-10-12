@@ -1088,6 +1088,43 @@ export const listLeads = async (req: AuthRequest, res: Response) => {
   }
 };
 
+
+export const getMediumSources = async (req: AuthRequest, res: Response) => {
+  try {
+    const { instituteId } = req.query;
+    const user = req.user;
+
+    if (!user) return res.status(401).json({ message: "Not authorized" });
+
+    let filter: any = {
+      // 🔥 skip empty / null mediums
+      medium: { $nin: [null, "", undefined] },
+    };
+
+    // 🔹 Role-based filter
+    if (user.role === "superadmin") {
+      if (instituteId) filter.instituteId = instituteId;
+    } else if (user.role === "admin") {
+      filter.instituteId = user.instituteId;
+    } else if (user.role === "user") {
+      filter.instituteId = user.instituteId;
+      filter.createdBy = user.id;
+    }
+
+    // 🔥 Just get unique medium values
+    const mediumsources = await Lead.distinct("medium", filter);
+
+    return res.status(200).json({
+      success: true,
+      total: mediumsources.length,
+      mediumsources,
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 export const listOnlyFollowups = async (req: AuthRequest, res: Response) => {
   try {
     const {
@@ -1664,6 +1701,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       description,
       phoneNumber,
       followups,
+      medium,
       isduplicate: _ignore1,
       duplicateReason: _ignore2,
       programId,
@@ -1741,10 +1779,15 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
       ? new Date(finalFollowUpDate).toISOString().split("T")[0]
       : "";
 
+    const oldMedium = lead.medium ?? "";
+    const newMedium = medium !== undefined ? (medium ?? "") : oldMedium;
+    const isMediumChanged = medium !== undefined && newMedium !== oldMedium;
+
     const isFollowUpChanged =
       status !== lead.status ||
       communication !== lead.communication ||
       description !== lead.description ||
+      isMediumChanged ||
       newDate !== oldDate;
 
     // ===============================
@@ -1757,6 +1800,7 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
         ...(communication !== undefined && { communication }),
         followUpDate: finalFollowUpDate,
         ...(description !== undefined && { description }),
+        ...(medium !== undefined && { medium }),
         isduplicate,
         duplicateReason,
         ...rest,
@@ -1777,8 +1821,10 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
           communication,
           followUpDate: finalFollowUpDate,
           calltaken,
+
           description,
-          createdBy: req.user?.id
+          createdBy: req.user?.id,
+          ...(isMediumChanged && { medium: newMedium }),
         },
       };
     }
