@@ -612,6 +612,216 @@ export const getoverallReferralsByInstitute = async (
     });
   }
 };
+
+
+// GET /students/new-and-admitted
+export const getNewAndAdmittedStudents = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+
+    const query: any = {};
+
+    // ---- Role-based access ----
+    if (user.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const passChangePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Students Pass Change"
+      );
+
+      if (!passChangePermission?.view) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to view this data",
+        });
+      }
+    }
+
+    if (user.role === "superadmin") {
+      const instituteId = (req.query.instituteId as string) || "all";
+      if (instituteId !== "all") query.instituteId = instituteId;
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+      if (user.departments && user.departments.length > 0) {
+        query.programId = { $in: user.departments };
+      }
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view students",
+      });
+    }
+
+    // ✅ Search: name / email / phone / username
+    if (search.trim()) {
+      const regex = { $regex: search, $options: "i" };
+      query.$or = [
+        { firstname: regex },
+        { lastname: regex },
+        { email: regex },
+        { mobileNo: regex },
+        { username: regex },
+      ];
+    }
+
+    const students = await (Student as any).paginate(query, {
+      page,
+      limit,
+      select: "firstname lastname email mobileNo username",
+      sort: { createdAt: -1 },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: students,
+    });
+  } catch (err: any) {
+    console.error("getNewAndAdmittedStudents error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+/* ============================================================
+   Admin change student password
+   - validates strong password
+   - admin must have "Students" permission (unless superadmin)
+   - cannot change password of a student in another institute
+============================================================ */
+export const adminChangeStudentPassword = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const admin = req.user;
+    const { id } = req.params;
+    const { password } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required",
+      });
+    }
+
+    // ---------- 1) Validate new password (strong) ----------
+    if (!password || typeof password !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    const pwd = password.trim();
+
+    if (pwd.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters.",
+      });
+    }
+    if (/\s/.test(pwd)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must not contain spaces.",
+      });
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 1 uppercase letter.",
+      });
+    }
+    if (!/[a-z]/.test(pwd)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 1 lowercase letter.",
+      });
+    }
+    if (!/[0-9]/.test(pwd)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 1 number.",
+      });
+    }
+    if (!/[^A-Za-z0-9]/.test(pwd)) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 1 special character.",
+      });
+    }
+
+    // ---------- 2) Permission check ----------
+    if (admin.role !== "superadmin") {
+      const permissionDoc = await Permission.findOne({
+        instituteId: admin.instituteId,
+        userId: admin.id,
+      });
+
+      const studentsPermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Students"
+      );
+
+      if (!studentsPermission?.view) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to change student password.",
+        });
+      }
+    }
+
+    // ---------- 3) Find student ----------
+    const student = await Student.findById(id).select(
+      "_id instituteId programId firstname lastname username"
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+
+
+    // ---------- 5) Hash & update ----------
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(pwd, salt);
+
+    await Student.findByIdAndUpdate(
+      student._id,
+      { $set: { password: hashedPassword } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully.",
+      data: {
+        studentId: student._id,
+        username: student.username,
+        name: `${student.firstname} ${student.lastname}`.trim(),
+      },
+    });
+  } catch (err: any) {
+    console.error("adminChangeStudentPassword error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Internal server error",
+    });
+  }
+};
+
+
 // Get all students
 export const listStudents = async (req: AuthRequest, res: Response) => {
   try {

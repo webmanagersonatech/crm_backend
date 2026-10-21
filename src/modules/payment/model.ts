@@ -1,17 +1,18 @@
 import mongoose, { Schema, Document } from "mongoose";
+import mongoosePaginate from "mongoose-paginate-v2";
 
 export interface IPayment extends Document {
   studentId: string;
   instituteId: string;
-  applicationId: string; // you are using string APP ID
-  gstAmount?: number;     // GST amount (18%)
-  totalAmount?: number;   // final amount (fee + GST)
+  applicationId: string;
+  gstAmount?: number;
+  totalAmount?: number;
   amount: number;
-  orderId: string;       // Razorpay Order ID
-  paymentId?: string;    // Razorpay Payment ID
+  orderId: string;
+  paymentId?: string;
   status: "pending" | "paid" | "failed";
-  gateway: "razorpay" | "instamojo" |"ccavenue";
-  createdAt: Date;   // ✅ add this
+  gateway: "razorpay" | "instamojo" | "ccavenue";
+  createdAt: Date;
   updatedAt: Date;
 }
 
@@ -30,29 +31,12 @@ const PaymentSchema: Schema = new Schema(
       required: true,
     },
 
-    amount: {
-      type: Number,
-      required: true,
-    },
-    gstAmount: {
-      type: Number,
-      default: 0,
-    },
+    amount: { type: Number, required: true },
+    gstAmount: { type: Number, default: 0 },
+    totalAmount: { type: Number, required: true },
 
-    // Total fee (amount + GST)
-    totalAmount: {
-      type: Number,
-      required: true,
-    },
-
-    orderId: {
-      type: String,
-      required: true,
-    },
-
-    paymentId: {
-      type: String,
-    },
+    orderId: { type: String, required: true },
+    paymentId: { type: String },
 
     status: {
       type: String,
@@ -62,10 +46,49 @@ const PaymentSchema: Schema = new Schema(
 
     gateway: {
       type: String,
-      enum: ["razorpay", "instamojo","ccavenue"],
+      enum: ["razorpay", "instamojo", "ccavenue"],
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
-export default mongoose.model<IPayment>("Payment", PaymentSchema);
+/* ============================================================
+   VIRTUALS — populate without changing stored `studentId`
+============================================================ */
+
+// Payment.student → Student (via Payment.studentId === Student._id)
+// Works because Payment.studentId stores the ObjectId string of Student._id
+PaymentSchema.virtual("student", {
+  ref: "Student",
+  localField: "studentId",
+  foreignField: "studentId",
+  justOne: true,
+});
+
+// Payment.institute → Institution (via Payment.instituteId === Institution.instituteId)
+PaymentSchema.virtual("institute", {
+  ref: "Institution",
+  localField: "instituteId",
+  foreignField: "instituteId",
+  justOne: true,
+});
+
+
+
+/* ============================================================
+   PLUGINS + INDEXES
+============================================================ */
+PaymentSchema.plugin(mongoosePaginate);
+
+PaymentSchema.index({ status: 1, createdAt: -1 });
+PaymentSchema.index({ instituteId: 1, status: 1 });
+PaymentSchema.index({ gateway: 1 });
+
+export default mongoose.model<IPayment>(
+  "Payment",
+  PaymentSchema
+) as mongoose.PaginateModel<IPayment>;

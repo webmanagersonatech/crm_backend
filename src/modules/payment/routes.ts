@@ -12,6 +12,8 @@ import {
   ccavenueCancel,
   ccavenueSuccess,
   razorpayWebhook,
+  getAllPaidPayments,
+  exportAllPaidPayments,
 } from "./controller";
 
 const router = express.Router();
@@ -41,5 +43,9 @@ router.post(
 );
 // 👨‍💼 Admin
 router.get("/", protect, listPayments);
+router.get("/paid/export", protect, exportAllPaidPayments);
+router.get("/paid", protect, getAllPaidPayments);
+
+
 
 export default router;

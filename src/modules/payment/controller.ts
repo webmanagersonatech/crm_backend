@@ -7,8 +7,11 @@ import Settings from "../settings/model";
 import Application from "../applications/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
 import qs from "querystring";
-
-
+import { AuthRequest } from "../auth";
+import Permission from "../permissions/model";
+import moment from "moment-timezone";
+import Student from "../students/model";
+import mongoose from "mongoose";
 // CCAvenue encrypt
 
 const encryptCCAvenue = (
@@ -650,6 +653,486 @@ export const instamojoWebhook = async (
   }
 };
 
+
+// ========================================================
+// GET ALL PAID PAYMENTS (role-based + date filter)
+// ========================================================
+export const getAllPaidPayments = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ---------------- PAGINATION ----------------
+    const page = Math.max(
+      1,
+      parseInt(String(req.query.page), 10) || 1
+    );
+
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(String(req.query.limit), 10) || 10)
+    );
+
+    const skip = (page - 1) * limit;
+
+    // ---------------- FILTERS ----------------
+    const search = String(req.query.search || "").trim();
+    const startDate = req.query.startDate
+      ? String(req.query.startDate)
+      : "";
+    const endDate = req.query.endDate
+      ? String(req.query.endDate)
+      : "";
+    const gateway = String(req.query.gateway || "all");
+    const requestedInstituteId = String(
+      req.query.instituteId || "all"
+    );
+
+    const query: any = {
+      status: "paid",
+    };
+
+    // ---------------- ROLE ACCESS ----------------
+    if (user.role === "superadmin") {
+      if (requestedInstituteId !== "all") {
+        query.instituteId = requestedInstituteId;
+      }
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+    } else {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const paymentPermission =
+        permissionDoc?.permissions.find(
+          (p: any) => p.moduleName === "Application Payment"
+        );
+
+      if (!paymentPermission?.view) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to view payments",
+        });
+      }
+
+      query.instituteId = user.instituteId;
+    }
+
+    // ---------------- DATE FILTER ----------------
+    const createdAt: any = {};
+
+    if (startDate) {
+      const start = moment.tz(
+        startDate,
+        "YYYY-MM-DD",
+        true,
+        "Asia/Kolkata"
+      );
+
+      if (!start.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid startDate. Use YYYY-MM-DD.",
+        });
+      }
+
+      createdAt.$gte = start.startOf("day").toDate();
+    }
+
+    if (endDate) {
+      const end = moment.tz(
+        endDate,
+        "YYYY-MM-DD",
+        true,
+        "Asia/Kolkata"
+      );
+
+      if (!end.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid endDate. Use YYYY-MM-DD.",
+        });
+      }
+
+      createdAt.$lte = end.endOf("day").toDate();
+    }
+
+    if (
+      startDate &&
+      endDate &&
+      createdAt.$gte > createdAt.$lte
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate must be before or equal to endDate.",
+      });
+    }
+
+    if (Object.keys(createdAt).length) {
+      query.createdAt = createdAt;
+    }
+
+    // ---------------- GATEWAY FILTER ----------------
+    if (gateway !== "all") {
+      const allowedGateways = [
+        "razorpay",
+        "instamojo",
+        "ccavenue",
+      ];
+
+      if (!allowedGateways.includes(gateway)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment gateway",
+        });
+      }
+
+      query.gateway = gateway;
+    }
+
+    // ---------------- SEARCH ----------------
+    if (search) {
+      const escapedSearch = search.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+      const regex = new RegExp(escapedSearch, "i");
+
+      const matchingStudents = await Student.find({
+        ...(query.instituteId
+          ? { instituteId: query.instituteId }
+          : {}),
+        $or: [
+          { firstname: regex },
+          { lastname: regex },
+          { email: regex },
+          { mobileNo: regex },
+          { username: regex },
+          { studentId: regex },
+        ],
+      })
+        .select("studentId")
+        .lean();
+
+      const matchingStudentIds = matchingStudents.map(
+        (student: any) => student.studentId
+      );
+
+      query.$or = [
+        { orderId: regex },
+        { paymentId: regex },
+        { applicationId: regex },
+        { studentId: regex },
+        ...(matchingStudentIds.length
+          ? [{ studentId: { $in: matchingStudentIds } }]
+          : []),
+      ];
+    }
+
+    // ---------------- FETCH + COUNT ----------------
+    const [payments, total] = await Promise.all([
+      Payment.find(query)
+        .populate({
+          path: "student",
+          select:
+            "studentId firstname lastname email mobileNo username",
+        })
+        .populate({
+          path: "institute",
+          select: "name instituteName instituteId code",
+        })
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean({ virtuals: true }),
+
+      Payment.countDocuments(query),
+    ]);
+
+    // ---------------- SUMMARY ----------------
+    const [summary] = await Payment.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalAmount: {
+            $sum: { $ifNull: ["$totalAmount", "$amount"] },
+          },
+          totalBaseAmount: { $sum: "$amount" },
+          totalGst: { $sum: { $ifNull: ["$gstAmount", 0] } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // ---------------- RESPONSE ----------------
+    return res.status(200).json({
+      success: true,
+
+      data: payments,
+
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1,
+      },
+
+      summary: {
+        totalPaidAmount: summary?.totalAmount ?? 0,
+        totalBaseAmount: summary?.totalBaseAmount ?? 0,
+        totalGst: summary?.totalGst ?? 0,
+        totalPaidCount: summary?.count ?? 0,
+      },
+
+      filters: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+        search: search || null,
+        gateway,
+        instituteId:
+          user.role === "superadmin"
+            ? requestedInstituteId
+            : user.instituteId,
+      },
+    });
+  } catch (err: any) {
+    console.error("getAllPaidPayments error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+// ========================================================
+// EXPORT ALL PAID PAYMENTS (no pagination)
+// ========================================================
+export const exportAllPaidPayments = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ---------------- FILTERS ----------------
+    const search = String(req.query.search || "").trim();
+    const startDate = req.query.startDate
+      ? String(req.query.startDate)
+      : "";
+    const endDate = req.query.endDate
+      ? String(req.query.endDate)
+      : "";
+    const gateway = String(req.query.gateway || "all");
+    const requestedInstituteId = String(
+      req.query.instituteId || "all"
+    );
+
+    const query: any = {
+      status: "paid",
+    };
+
+    // ---------------- ROLE ACCESS ----------------
+    if (user.role === "superadmin") {
+      if (requestedInstituteId !== "all") {
+        query.instituteId = requestedInstituteId;
+      }
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+    } else {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const paymentPermission =
+        permissionDoc?.permissions.find(
+          (p: any) => p.moduleName === "Application Payment"
+        );
+
+      if (!paymentPermission?.download) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to download payments",
+        });
+      }
+
+      query.instituteId = user.instituteId;
+    }
+
+    // ---------------- DATE FILTER ----------------
+    const createdAt: any = {};
+
+    if (startDate) {
+      const start = moment.tz(
+        startDate,
+        "YYYY-MM-DD",
+        true,
+        "Asia/Kolkata"
+      );
+
+      if (!start.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid startDate. Use YYYY-MM-DD.",
+        });
+      }
+
+      createdAt.$gte = start.startOf("day").toDate();
+    }
+
+    if (endDate) {
+      const end = moment.tz(
+        endDate,
+        "YYYY-MM-DD",
+        true,
+        "Asia/Kolkata"
+      );
+
+      if (!end.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid endDate. Use YYYY-MM-DD.",
+        });
+      }
+
+      createdAt.$lte = end.endOf("day").toDate();
+    }
+
+    if (
+      startDate &&
+      endDate &&
+      createdAt.$gte > createdAt.$lte
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate must be before or equal to endDate.",
+      });
+    }
+
+    if (Object.keys(createdAt).length) {
+      query.createdAt = createdAt;
+    }
+
+    // ---------------- GATEWAY FILTER ----------------
+    if (gateway !== "all") {
+      const allowedGateways = [
+        "razorpay",
+        "instamojo",
+        "ccavenue",
+      ];
+
+      if (!allowedGateways.includes(gateway)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment gateway",
+        });
+      }
+
+      query.gateway = gateway;
+    }
+
+    // ---------------- SEARCH ----------------
+    if (search) {
+      const escapedSearch = search.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+      const regex = new RegExp(escapedSearch, "i");
+
+      const matchingStudents = await Student.find({
+        ...(query.instituteId
+          ? { instituteId: query.instituteId }
+          : {}),
+        $or: [
+          { firstname: regex },
+          { lastname: regex },
+          { email: regex },
+          { mobileNo: regex },
+          { username: regex },
+          { studentId: regex },
+        ],
+      })
+        .select("studentId")
+        .lean();
+
+      const matchingStudentIds = matchingStudents.map(
+        (student: any) => student.studentId
+      );
+
+      query.$or = [
+        { orderId: regex },
+        { paymentId: regex },
+        { applicationId: regex },
+        { studentId: regex },
+        ...(matchingStudentIds.length
+          ? [{ studentId: { $in: matchingStudentIds } }]
+          : []),
+      ];
+    }
+
+    // ---------------- FETCH ALL (no pagination) ----------------
+    const payments = await Payment.find(query)
+      .populate({
+        path: "student",
+        select:
+          "studentId firstname lastname email mobileNo username",
+      })
+      .populate({
+        path: "institute",
+        select: "name instituteName instituteId code",
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .lean({ virtuals: true });
+
+    // ---------------- RESPONSE ----------------
+    return res.status(200).json({
+      success: true,
+      message: "Paid payments exported successfully",
+      data: payments,
+      totalCount: payments.length,
+      filters: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+        search: search || null,
+        gateway,
+        instituteId:
+          user.role === "superadmin"
+            ? requestedInstituteId
+            : user.instituteId,
+      },
+    });
+  } catch (err: any) {
+    console.error("exportAllPaidPayments error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
 // ========================================================
 export const listPayments = async (req: Request, res: Response) => {
   const payments = await Payment.find()

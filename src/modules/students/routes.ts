@@ -21,6 +21,8 @@ import {
     generateUsernamesForInstitute,
     getoverallReferralsByInstitute,
     reshareCredentials,
+    getNewAndAdmittedStudents,
+    adminChangeStudentPassword,
     getStudentWithToken
 } from "./controller";
 
@@ -36,6 +38,12 @@ router.post(
 router.post("/login", studentLogin);
 router.post("/logout", studentLogout);
 // In your backend router
+router.get("/new-and-admitted", protect, getNewAndAdmittedStudents);
+router.put(
+    "/admin/change-password/:id",
+    protect,
+    adminChangeStudentPassword
+);
 router.get("/payment-data", studentProtect, getpaymentrelateddata);
 router.get("/receipt-data", studentProtect, getReceiptData);
 router.get('/export', protect, exportStudents);
