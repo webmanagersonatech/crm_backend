@@ -3,8 +3,6 @@ import mongoose from "mongoose";
 
 import StudentFeeStructure from "./model";
 import Student from "../students/model";
-import FeeConfiguration from "../fee-configuartion/model"
-
 
 /* ============================================================
  * TYPES & HELPERS
@@ -41,154 +39,187 @@ const isValidObjectId = (id: unknown): boolean =>
   typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
 /* ============================================================
- * CREATE STUDENT FEE STRUCTURE
+ * UPSERT STUDENT FEE STRUCTURE
  * ============================================================
- * Creates a LOCKED fee snapshot for a student.
- *
- * The fee is copied from the master FeeConfiguration only once.
- * After this document is created, changes to the master fee
- * configuration will NOT affect this student's fee.
+ * Match on: studentId + year + programId + instituteId
+ * - If found  → update paymentOption + concession + givenEntries
+ * - If missing → create a fresh snapshot
  * ============================================================ */
-export const createStudentFeeStructure = async (
+export const upsertStudentFeeStructure = async (
   req: Request,
   res: Response
 ): Promise<Response> => {
   try {
-    const { studentId, academicYear, paymentOptionType } = req.body ?? {};
+    const {
+      studentId,
+      programId,
+      instituteId,
+      year,
+      academicYear,
+      courseName,
+      totalAmount,
+      tuitionFee,
+      otherFee,
+      otherFeeDescription,
+      concessionPercentage,
+      tuitionConcession,
+      otherFeeConcession,
+      concessionAmount,
+      concessionName,
+      appliedReferrals,
+      paymentOption,
+      givenAmount,
+      givenEntries,
+      offer,
+    } = req.body ?? {};
 
-    /* ---------- 1. Validate input ---------- */
+    /* ---------- 1. Validate required ---------- */
     if (!studentId || !isValidObjectId(studentId)) {
       return fail(res, 400, "A valid studentId is required");
     }
-
+    if (!programId) return fail(res, 400, "programId is required");
+    if (!instituteId) return fail(res, 400, "instituteId is required");
+    if (year === undefined || year === null) {
+      return fail(res, 400, "year is required");
+    }
+    if (!paymentOption || !paymentOption.paymentOptionId) {
+      return fail(res, 400, "paymentOption is required");
+    }
     if (
-      typeof academicYear !== "string" ||
-      academicYear.trim().length === 0
+      !Array.isArray(paymentOption.installments) ||
+      paymentOption.installments.length === 0
     ) {
-      return fail(res, 400, "academicYear is required");
+      return fail(res, 400, "paymentOption.installments is required");
     }
 
-    /* ---------- 2. Find student ---------- */
+    /* ---------- 2. Verify student ---------- */
     const student = await Student.findById(studentId);
     if (!student) {
       return fail(res, 404, "Student not found");
     }
 
-    /* ---------- 3. Resolve student year ---------- */
-    const studentYear = Number(student.year);
-    if (!Number.isFinite(studentYear) || studentYear <= 0) {
-      return fail(res, 400, "Student year is not available");
-    }
-
-    /* ---------- 4. Prevent duplicate ---------- */
-    const existing = await StudentFeeStructure.findOne({
-      studentId: student._id,
-      academicYear,
-      year: studentYear,
-    });
-
-    if (existing) {
-      return fail(
-        res,
-        409,
-        "Fee structure already exists for this student and academic year",
-        { data: existing }
-      );
-    }
-
-    /* ---------- 5. Load master fee configuration ---------- */
-    const feeConfiguration = await FeeConfiguration.findOne({
-      instituteId: student.instituteId,
-    });
-
-    if (!feeConfiguration) {
-      return fail(res, 404, "Fee configuration not found");
-    }
-
-    /* ---------- 6. Match course/program ---------- */
-    const course = feeConfiguration.courseFeeStructure.find(
-      (item: any) => String(item.courseId) === String(student.programId)
+    /* ---------- 3. Normalize installments ---------- */
+    const normalizedInstallments = paymentOption.installments.map(
+      (inst: any) => ({
+        number: Number(inst.number),
+        amount: Number(inst.amount || 0),
+        tuitionFee: Number(inst.tuitionFee || 0),
+        otherFee: Number(inst.otherFee || 0),
+        dueDate: inst.dueDate ? new Date(inst.dueDate) : new Date(),
+        status: inst.status ?? "pending",
+        paidAmount: Number(inst.paidAmount || 0),
+        paidDate: inst.paidDate ? new Date(inst.paidDate) : undefined,
+        paymentId: inst.paymentId || undefined,
+        concessionPercentage: Number(inst.concessionPercentage || 0),
+        tuitionConcession: Number(inst.tuitionConcession || 0),
+        otherFeeConcession: Number(inst.otherFeeConcession || 0),
+        payableAmount: Number(
+          inst.payableAmount ??
+          (Number(inst.tuitionFee || 0) -
+            Number(inst.tuitionConcession || 0) +
+            Number(inst.otherFee || 0))
+        ),
+        appliedNow: Number(inst.appliedNow || 0),
+      })
     );
 
-    if (!course) {
-      return fail(
-        res,
-        404,
-        "Course fee structure not found for this student"
-      );
-    }
+    /* ---------- 4. Normalize given entries ---------- */
+    const normalizedGivenEntries = Array.isArray(givenEntries)
+      ? givenEntries
+        .filter(
+          (e: any) => e && e.date && Number(e.amount) > 0
+        )
+        .map((e: any) => ({
+          date: new Date(e.date),
+          amount: Number(e.amount),
+          description: (e.description ?? "").trim(),
+        }))
+      : [];
 
-    /* ---------- 7. Match year ---------- */
-    const yearStructure = course.years.find(
-      (item: any) => String(item.year) === String(studentYear)
-    );
-
-    if (!yearStructure) {
-      return fail(
-        res,
-        404,
-        "Year fee structure not found for this student"
-      );
-    }
-
-    /* ---------- 8. Match payment option ---------- */
-    const desiredType = paymentOptionType || "installment";
-
-    const selectedPaymentOption = yearStructure.paymentOptions.find(
-      (option: any) => option.type === desiredType
-    );
-
-    if (!selectedPaymentOption) {
-      return fail(res, 404, "Selected payment option not found");
-    }
-
-    /* ---------- 9. Snapshot installments (deep copy) ---------- */
-    const installments = (
-      selectedPaymentOption.installments ?? []
-    ).map((installment: any) => ({
-      number: installment.number,
-      amount: installment.amount,
-      tuitionFee: installment.tuitionFee,
-      otherFee: installment.otherFee,
-      dueDate: installment.dueDate,
-      status: "pending" as const,
-      paidAmount: 0,
-      paidDate: undefined,
-      paymentId: undefined,
-    }));
-
-    /* ---------- 10. Create LOCKED snapshot ---------- */
-    const studentFeeStructure = await StudentFeeStructure.create({
+    /* ---------- 5. Build snapshot payload ---------- */
+    const snapshotPayload = {
       studentId: student._id,
       studentCode: student.studentId,
-      instituteId: student.instituteId,
-      programId: student.programId,
-      courseName: course.name,
-      year: studentYear,
-      academicYear,
+      instituteId,
+      programId,
+      courseName: courseName ?? student.programId ?? "",
+      year: Number(year),
+      academicYear:
+        academicYear ?? (student as any).academicYear ?? "",
 
-      totalAmount: yearStructure.amount,
-      tuitionFee: yearStructure.tuitionFee,
-      otherFee: yearStructure.otherFee,
-      otherFeeDescription: yearStructure.otherFeeDescription || "",
+      totalAmount: Number(totalAmount || 0),
+      tuitionFee: Number(tuitionFee || 0),
+      otherFee: Number(otherFee || 0),
+      otherFeeDescription: otherFeeDescription || "",
+
+      concessionPercentage: Number(concessionPercentage || 0),
+      tuitionConcession: Number(tuitionConcession || 0),
+      otherFeeConcession: Number(otherFeeConcession || 0),
+      concessionAmount: Number(concessionAmount || 0),
+      concessionName: concessionName || "",
+      appliedReferrals: Array.isArray(appliedReferrals)
+        ? appliedReferrals
+        : [],
 
       paymentOption: {
-        type: selectedPaymentOption.type,
-        name: selectedPaymentOption.name,
-        installments,
+        paymentOptionId: paymentOption.paymentOptionId,
+        type: paymentOption.type,
+        name: paymentOption.name,
+        installments: normalizedInstallments,
       },
 
-      feeStructureVersion: `${academicYear}-V1`,
-    });
+      givenAmount: Number(givenAmount || 0),
+      givenEntries: normalizedGivenEntries,
+      offer: Boolean(offer),
+      feeStructureVersion: `${academicYear ?? (student as any).academicYear ?? ""
+        }-V1`,
+    };
+
+    /* ---------- 6. Upsert ---------- */
+    const filter = {
+      studentId: student._id,
+      programId,
+      instituteId,
+      year: Number(year),
+    };
+
+    const updated = await StudentFeeStructure.findOneAndUpdate(
+      filter,
+      { $set: snapshotPayload },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+        runValidators: true,
+        rawResult: true, // 🔹 needed to read upsert meta
+      }
+    );
+
+    // 🔹 Determine create vs update reliably
+    const wasCreated = !(updated as any)?.lastErrorObject
+      ?.updatedExisting;
+
+    const doc = (updated as any)?.value ?? updated;
 
     return ok(
       res,
-      studentFeeStructure,
-      "Student fee structure created successfully",
-      201
+      doc,
+      wasCreated
+        ? "Student fee structure created successfully"
+        : "Student fee structure updated successfully",
+      wasCreated ? 201 : 200
     );
   } catch (error: any) {
-    console.error("Error creating student fee structure:", error);
+    console.error("Error upserting student fee structure:", error);
+
+    if (error?.code === 11000) {
+      return fail(
+        res,
+        409,
+        "A fee structure already exists for this student/year"
+      );
+    }
+
     return fail(res, 500, "Internal server error", {
       error: error.message,
     });
@@ -294,13 +325,17 @@ export const getNextPendingInstallment = async (
       );
 
     if (!nextInstallment) {
-      return ok(res, {
-        studentId: feeStructure.studentId,
-        studentCode: feeStructure.studentCode,
-        academicYear: feeStructure.academicYear,
-        totalAmount: feeStructure.totalAmount,
-        status: "paid" as const,
-      }, "All installments are paid");
+      return ok(
+        res,
+        {
+          studentId: feeStructure.studentId,
+          studentCode: feeStructure.studentCode,
+          academicYear: feeStructure.academicYear,
+          totalAmount: feeStructure.totalAmount,
+          status: "paid" as const,
+        },
+        "All installments are paid"
+      );
     }
 
     return ok(res, {
@@ -322,8 +357,6 @@ export const getNextPendingInstallment = async (
 
 /* ============================================================
  * UPDATE INSTALLMENT PAYMENT (partial or full)
- * ============================================================
- * Uses atomic positional updates to avoid race conditions.
  * ============================================================ */
 export const updateInstallmentPayment = async (
   req: Request,
@@ -524,8 +557,6 @@ export const markInstallmentAsPaid = async (
 
 /* ============================================================
  * DELETE STUDENT FEE STRUCTURE
- * ============================================================
- * Use carefully — restrict to admin/super-admin.
  * ============================================================ */
 export const deleteStudentFeeStructure = async (
   req: Request,

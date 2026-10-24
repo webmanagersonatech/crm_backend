@@ -14,6 +14,7 @@ import csv from "csv-parser";
 import Institution from '../institutions/model'
 import Permission from '../permissions/model'
 import FeeConcession from '../fees-concession/model'
+import StudentFeeStructure from '../StudentFeeStructure/model'
 import TuitionFee from '../tuition-payment/model'
 import PaidFee from '../paidfee/model'
 
@@ -1817,27 +1818,27 @@ export const updateApplication = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    if (req.body.programId && req.body.programId !== oldProgramId) {
+    // if (req.body.programId && req.body.programId !== oldProgramId) {
 
 
-      const existingConcession = await FeeConcession.findOne({
-        studentId: student._id,
-        instituteId,
-      });
+    //   const existingConcession = await FeeConcession.findOne({
+    //     studentId: student._id,
+    //     instituteId,
+    //   });
 
 
-      if (existingConcession) {
-        existingConcession.status = "pending";
-        existingConcession.programId = req.body.programId;
-        existingConcession.reason = `Program changed from ${oldProgram} to ${program}. Concession needs re-approval.`;
-        existingConcession.updatedAt = new Date();
-        existingConcession.approvedBy = undefined;
-        existingConcession.approvedAt = undefined;
+    //   if (existingConcession) {
+    //     existingConcession.status = "pending";
+    //     existingConcession.programId = req.body.programId;
+    //     existingConcession.reason = `Program changed from ${oldProgram} to ${program}. Concession needs re-approval.`;
+    //     existingConcession.updatedAt = new Date();
+    //     existingConcession.approvedBy = undefined;
+    //     existingConcession.approvedAt = undefined;
 
-        await existingConcession.save();
-      }
+    //     await existingConcession.save();
+    //   }
 
-    }
+    // }
 
 
     return res.status(200).json({
@@ -2549,7 +2550,21 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
         console.log(`🗑️ Deleted ${deletedTuition.deletedCount} tuition fee records`);
       }
 
+      const studentFeeStructures = await StudentFeeStructure.find({
+        studentId: student._id,
+        instituteId: instituteId,
+      });
 
+      if (studentFeeStructures.length > 0) {
+        const deletedFeeStructures = await StudentFeeStructure.deleteMany({
+          studentId: student._id,
+          instituteId: instituteId,
+        });
+
+        console.log(
+          `🗑️ Deleted ${deletedFeeStructures.deletedCount} student fee structure records`
+        );
+      }
 
 
       await Student.findOneAndDelete({

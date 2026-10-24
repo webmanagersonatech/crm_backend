@@ -31,6 +31,7 @@ import tuitionFeeRoutes from './modules/tuition-payment/routes';
 import feesconcession from './modules/fees-concession/routes'
 import additionalFeeConfigurationRoutes from './modules/additional-fee-configuartion/routes';
 import paidFeeRoutes from './modules/paidfee/routes';
+import StudentFeeStructure from './modules/StudentFeeStructure/routes';
 
 dotenv.config();
 
@@ -90,6 +91,7 @@ app.use('/api/ciicp', ciicpRoutes);
 app.use('/api/tuition-fee', tuitionFeeRoutes);
 app.use('/api/additional-fee-configuration', additionalFeeConfigurationRoutes);
 app.use('/api/fee-concession', feesconcession);
+app.use('/api/studentfeestructure', StudentFeeStructure);
 app.use('/api/captcha', captchaRoutes);
 app.use('/api/paid-fees', paidFeeRoutes);
 app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));

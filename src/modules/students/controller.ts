@@ -530,10 +530,9 @@ export const getoverallReferralsByInstitute = async (
   try {
     const { id } = req.params;
 
-    const student = await Student.findById(id).select(
-      "firstname lastname email programId studentId instituteId year"
+    const student: any = await Student.findById(id).select(
+      "firstname lastname email programId studentId instituteId year academicYear"
     );
-
 
     if (!student) {
       return res.status(404).json({
@@ -541,21 +540,27 @@ export const getoverallReferralsByInstitute = async (
       });
     }
 
-    const feeConfiguration = await FeeConfiguration.findOne({
-      instituteId: student.instituteId,
-    }).select("referrals courseFeeStructure");
+    // Match the fee configuration for the student's academic year (same as
+    // getFeeConfigurationByStudent). Fall back to any config for the institute.
+    const configFilter: any = { instituteId: student.instituteId };
+    if (student.academicYear) configFilter.academicYear = student.academicYear;
+
+    const feeConfiguration: any =
+      (await FeeConfiguration.findOne(configFilter).select(
+        "referrals courseFeeStructure academicYear"
+      )) ||
+      (await FeeConfiguration.findOne({
+        instituteId: student.instituteId,
+      }).select("referrals courseFeeStructure academicYear"));
 
     const matchedCourse = feeConfiguration?.courseFeeStructure?.find(
-      (course: any) =>
-        course.courseId === student.programId
+      (course: any) => course.courseId === student.programId
     );
 
     const feeConcession = await FeeConcession.findOne({
       studentId: student._id,
       instituteId: student.instituteId,
-    }).select(
-      "reason referralIds counsellorName paymentOptionId"
-    );
+    }).select("reason referralIds counsellorName");
 
     // Build course fee response
     let courseFeeResponse = null;
@@ -566,19 +571,19 @@ export const getoverallReferralsByInstitute = async (
         courseName: matchedCourse.name,
         years: matchedCourse.years
           .filter(
-            (year: any) =>
-              Number(year.year) === Number(student.year ?? 1)
+            (year: any) => Number(year.year) === Number(student.year ?? 1)
           )
           .map((year: any) => {
             // Filter out "Full Payment" and only keep installment options
-            const installmentOptions = year.paymentOptions?.filter(
-              (option: any) => option.type === 'installment'
-            ) || [];
+            const installmentOptions =
+              year.paymentOptions?.filter(
+                (option: any) => option.type === "installment"
+              ) || [];
 
             // Map to only return name and paymentOptionId
             const paymentOptions = installmentOptions.map((option: any) => ({
               name: option.name,
-              value: option.paymentOptionId
+              value: option.paymentOptionId,
             }));
 
             return {
@@ -587,28 +592,27 @@ export const getoverallReferralsByInstitute = async (
               tuitionFee: year.tuitionFee,
               otherFee: year.otherFee,
               feesdescription: year.otherFeeDescription,
-              paymentOptions: paymentOptions
+              paymentOptions: paymentOptions,
             };
-          })
+          }),
       };
     }
 
     res.status(200).json({
       success: true,
       data: student,
+      // ✅ Same pattern as getFeeConfigurationByStudent:
+      // fee configuration's academic year first, then student's
+      academicYear: feeConfiguration?.academicYear || student.academicYear || null,
       courseFee: courseFeeResponse,
       referrals: feeConfiguration?.referrals || [],
       feeConcession: feeConcession || null,
     });
-
   } catch (err) {
-    console.error(
-      "Error getting student fee details:",
-      err
-    );
+    console.error("Error getting student fee details:", err);
 
     res.status(500).json({
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };

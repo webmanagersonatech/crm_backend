@@ -405,6 +405,7 @@ export const listFeeConcessions = async (
     const search = (req.query.search as string)?.trim() || "";
     const status = (req.query.status as string) || "all";
     const instituteId = req.query.instituteId as string;
+    const academicYear = req.query.academicYear as string;   // 🔹 NEW
 
     // Build Query
     const query: any = {};
@@ -426,15 +427,14 @@ export const listFeeConcessions = async (
 
     if (req.query.program) {
       if (Array.isArray(req.query.program)) {
-        query.programId = { $in: req.query.program }; // ✅ use programId field
+        query.programId = { $in: req.query.program };
       } else {
         query.programId = req.query.program;
       }
     }
 
-    // Enhanced Search - Now searches across student fields and counselor name
+    // Enhanced Search
     if (search) {
-      // First, find students that match the search criteria
       const studentMatchQuery: any = {
         $or: [
           { studentId: { $regex: search, $options: "i" } },
@@ -442,29 +442,23 @@ export const listFeeConcessions = async (
           { lastname: { $regex: search, $options: "i" } },
           { email: { $regex: search, $options: "i" } },
           { mobileNo: { $regex: search, $options: "i" } },
-        ]
+        ],
       };
 
-      // Apply institute filter to student search if applicable
       if (query.instituteId) {
         studentMatchQuery.instituteId = query.instituteId;
       }
 
-      // Find matching student IDs
       const matchingStudents = await Student.find(studentMatchQuery)
-        .select('_id')
+        .select("_id")
         .lean();
 
       const studentIds = matchingStudents.map((s: any) => s._id);
 
-      // Build the final search query for fee concessions
       query.$or = [
-        // Search by counselor name
         { counsellorName: { $regex: search, $options: "i" } },
-        // Search by reason
         { reason: { $regex: search, $options: "i" } },
-        // Search by student ID from the matching students
-        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : [])
+        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : []),
       ];
     }
 
@@ -472,14 +466,12 @@ export const listFeeConcessions = async (
     const feeConcessions = await (FeeConcession as any).paginate(query, {
       page,
       limit,
-      sort: {
-        createdAt: -1,
-      },
+      sort: { createdAt: -1 },
       populate: [
         {
           path: "student",
           select:
-            "studentId firstname lastname applicationId programId admissionNumber classSection mobileNo email instituteId",
+            "studentId firstname lastname applicationId programId admissionNumber classSection mobileNo email instituteId academicYear year",
         },
         {
           path: "creator",
@@ -493,13 +485,16 @@ export const listFeeConcessions = async (
       lean: true,
     });
 
-    // Get all Fee Configurations
+    // ------------------------------------------------------------------
+    // Get ALL Fee Configurations, keyed by instituteId + academicYear
+    // ------------------------------------------------------------------
     const feeConfigurations = await FeeConfiguration.find().lean();
 
-    const feeConfigMap = new Map();
-
+    // 🔹 Key: `${instituteId}__${academicYear}`
+    const feeConfigMap = new Map<string, any>();
     feeConfigurations.forEach((config: any) => {
-      feeConfigMap.set(config.instituteId, config);
+      const key = `${config.instituteId}__${config.academicYear}`;
+      feeConfigMap.set(key, config);
     });
 
     // Get all institutions for the students
@@ -507,12 +502,10 @@ export const listFeeConcessions = async (
       .map((item: any) => item.student?.instituteId)
       .filter(Boolean);
 
-    // Get unique institute IDs
     const uniqueInstituteIds = [...new Set(instituteIds)];
 
-    // Fetch all institutions
     const institutions = await Institution.find({
-      instituteId: { $in: uniqueInstituteIds }
+      instituteId: { $in: uniqueInstituteIds },
     }).lean();
 
     const institutionMap = new Map();
@@ -526,7 +519,19 @@ export const listFeeConcessions = async (
       const creator = item.creator || {};
       const approver = item.approver || {};
 
-      const feeConfiguration = feeConfigMap.get(item.instituteId);
+      // ------------------------------------------------------------------
+      // Resolve academic year for this student
+      //   Priority: student.academicYear → fall back to request-level filter
+      // ------------------------------------------------------------------
+      const studentAcademicYear: string | undefined =
+        student.academicYear || academicYear || undefined;
+
+      // ------------------------------------------------------------------
+      // Fetch year-specific fee configuration
+      // ------------------------------------------------------------------
+      const feeConfiguration: any = studentAcademicYear
+        ? feeConfigMap.get(`${item.instituteId}__${studentAcademicYear}`)
+        : null;
 
       const referralMap = new Map();
       const courseFeeMap = new Map();
@@ -540,9 +545,14 @@ export const listFeeConcessions = async (
       });
 
       const course = courseFeeMap.get(student.programId);
-      const year = course?.years?.[0];
 
-      // Get institution from map
+      // 🔹 Match student's year in course config (was hardcoded years[0])
+      const studentYearNum = Number(student.year || 1);
+      const year =
+        course?.years?.find(
+          (y: any) => Number(y.year) === studentYearNum
+        ) ?? course?.years?.[0];
+
       const institution = institutionMap.get(student.instituteId);
 
       // Build referrals array
@@ -555,35 +565,22 @@ export const listFeeConcessions = async (
         };
       });
 
-      // Calculate total discount percentage
-      const totalDiscountPercentage = referrals.reduce((sum: number, ref: any) => {
-        return sum + (ref.percentage || 0);
-      }, 0);
 
-      // Get tuition fee and other fee from the year
-      const tuitionFee = year?.tuitionFee || 0;
-      const otherFee = year?.otherFee || 0;
-      const originalAmount = tuitionFee + otherFee;
 
-      // Calculate discount amount - ONLY ON TUITION FEE
-      const discountAmount = (tuitionFee * totalDiscountPercentage) / 100;
 
-      // Calculate discounted tuition fee
-      const discountedTuition = tuitionFee - discountAmount;
-
-      // Final amount = discounted tuition + other fee (other fee remains static)
-      const finalAmount = discountedTuition + otherFee;
-
-      // Get payment option details from fee configuration
+      // Payment option details — scoped to the same year config
       let paymentOption = null;
       if (item.paymentOptionId && feeConfiguration) {
-        // Find the payment option from the course structure
         const courseWithPayment = feeConfiguration.courseFeeStructure?.find(
           (c: any) => c.courseId === student.programId
         );
 
         if (courseWithPayment) {
-          const yearData = courseWithPayment.years?.[0];
+          const yearData =
+            courseWithPayment.years?.find(
+              (y: any) => Number(y.year) === studentYearNum
+            ) ?? courseWithPayment.years?.[0];
+
           if (yearData) {
             const foundOption = yearData.paymentOptions?.find(
               (opt: any) => opt.paymentOptionId === item.paymentOptionId
@@ -593,7 +590,7 @@ export const listFeeConcessions = async (
                 paymentOptionId: foundOption.paymentOptionId,
                 name: foundOption.name,
                 type: foundOption.type,
-                installmentCount: foundOption.installments?.length || 0
+                installmentCount: foundOption.installments?.length || 0,
               };
             }
           }
@@ -609,35 +606,24 @@ export const listFeeConcessions = async (
           programId: student.programId,
           firstname: student.firstname,
           lastname: student.lastname,
-          fullName: `${student.firstname ?? ""} ${student.lastname ?? ""}`.trim(),
+          fullName: `${student.firstname ?? ""} ${student.lastname ?? ""
+            }`.trim(),
           email: student.email,
           mobileNo: student.mobileNo,
+          academicYear: studentAcademicYear || null,  // 🔹 echo back
           institute: institution ? institution.name : "",
           feeConcessiondeatils: {
             courseId: course?.courseId || "",
             name: course?.name || "",
-            amount: originalAmount,
-            tuitionFee: tuitionFee,
-            otherFee: otherFee,
-            discountedTuition: discountedTuition,
-            discountAmount: discountAmount,
-            totalDiscountPercentage: totalDiscountPercentage,
-            finalAmount: finalAmount,
             referrals: referrals,
             reason: item.reason,
             counsellorName: item.counsellorName,
             status: item.status,
             createdAt: item.createdAt,
-            paymentOptionId: item.paymentOptionId || null, // ADDED: payment option ID
-            paymentOption: paymentOption, // ADDED: full payment option details
-            breakdown: {
-              tuitionFee: tuitionFee,
-              otherFee: otherFee,
-              discountApplied: `-₹${discountAmount.toLocaleString()} (${totalDiscountPercentage}% on tuition)`,
-              finalTuition: discountedTuition,
-              finalTotal: finalAmount
-            }
-          }
+            paymentOptionId: item.paymentOptionId || null,
+            paymentOption: paymentOption,
+        
+          },
         },
         createdBy: creator?._id
           ? {
@@ -662,7 +648,6 @@ export const listFeeConcessions = async (
 
     const statsQuery: any = {};
 
-    // Apply same filters as list
     if (user.role === "superadmin") {
       if (instituteId && instituteId !== "all") {
         statsQuery.instituteId = instituteId;
@@ -674,9 +659,7 @@ export const listFeeConcessions = async (
       statsQuery.createdBy = user.id;
     }
 
-    // Apply search filter also if needed for stats
     if (search) {
-      // Reuse the same search logic for stats
       const studentMatchQuery: any = {
         $or: [
           { studentId: { $regex: search, $options: "i" } },
@@ -684,7 +667,7 @@ export const listFeeConcessions = async (
           { lastname: { $regex: search, $options: "i" } },
           { email: { $regex: search, $options: "i" } },
           { mobileNo: { $regex: search, $options: "i" } },
-        ]
+        ],
       };
 
       if (statsQuery.instituteId) {
@@ -692,7 +675,7 @@ export const listFeeConcessions = async (
       }
 
       const matchingStudents = await Student.find(studentMatchQuery)
-        .select('_id')
+        .select("_id")
         .lean();
 
       const studentIds = matchingStudents.map((s: any) => s._id);
@@ -700,25 +683,15 @@ export const listFeeConcessions = async (
       statsQuery.$or = [
         { counsellorName: { $regex: search, $options: "i" } },
         { reason: { $regex: search, $options: "i" } },
-        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : [])
+        ...(studentIds.length > 0 ? [{ studentId: { $in: studentIds } }] : []),
       ];
     }
 
-    // Get Counts
     const [pendingCount, approvedCount, rejectedCount, totalCount] =
       await Promise.all([
-        FeeConcession.countDocuments({
-          ...statsQuery,
-          status: "pending",
-        }),
-        FeeConcession.countDocuments({
-          ...statsQuery,
-          status: "approved",
-        }),
-        FeeConcession.countDocuments({
-          ...statsQuery,
-          status: "rejected",
-        }),
+        FeeConcession.countDocuments({ ...statsQuery, status: "pending" }),
+        FeeConcession.countDocuments({ ...statsQuery, status: "approved" }),
+        FeeConcession.countDocuments({ ...statsQuery, status: "rejected" }),
         FeeConcession.countDocuments(statsQuery),
       ]);
 
@@ -729,7 +702,9 @@ export const listFeeConcessions = async (
       rejected: rejectedCount,
     };
 
-    const settings = await Settings.findOne({ instituteId: query.instituteId });
+    const settings = await Settings.findOne({
+      instituteId: query.instituteId,
+    });
     let courses = settings?.courses || [];
 
     return res.status(200).json({

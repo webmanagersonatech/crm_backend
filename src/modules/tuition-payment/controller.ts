@@ -5,7 +5,6 @@ import mongoose from "mongoose";
 import axios from "axios";
 import qs from "querystring";
 import Student from "../students/model";
-import PaidFee from "../paidfee/model";
 
 // Models
 import TuitionFee from "./model";
@@ -31,15 +30,18 @@ const PAYMENT_GATEWAY = {
   RAZORPAY: "razorpay",
   INSTAMOJO: "instamojo",
   CCAVENUE: "ccavenue",
+  MANUAL: "manual",
 } as const;
 
 const CURRENCY = "INR";
 const GST_AMOUNT = 0;
 
-const BACKEND_URL = process.env.BASE_URL || "https://hikabackend.sonastar.com";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://hikaapp.sonastar.com";
+const BACKEND_URL =
+  process.env.BASE_URL || "https://hikabackend.sonastar.com";
+const FRONTEND_URL =
+  process.env.FRONTEND_URL || "https://hikaapp.sonastar.com";
 
-// Gateway credentials come from environment variables (never hard-code them)
+// TODO: move these to env vars.
 const getInstamojoConfig = () => ({
   apiKey: "354258c3f2d1eda35995dae1540db4b4",
   authToken: "7f76729963176d6cc7169105b0cd81f4",
@@ -64,7 +66,6 @@ const safeEqual = (a: string, b: string) => {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
-/** Business-rule error that maps straight to an HTTP response */
 class FeeError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -129,19 +130,108 @@ const decryptCCAvenue = (encryptedText: string, workingKey: string) => {
 };
 
 // ============================================================
-// STUDENT FEE STRUCTURE (per-student snapshot of the fee config)
+// TYPES
+// ============================================================
+
+interface AppliedReferral {
+  referralId: string;
+  name: string;
+  percentage: number;
+}
+
+interface ConcessionContext {
+  concessionPercentage: number;
+  concessionName: string;
+  appliedReferrals: AppliedReferral[];
+  tuitionConcession: number;
+}
+
+interface ResolvedInstallment {
+  source: "studentFeeStructure" | "feeConfiguration";
+  courseId: string;
+  courseName: string;
+  academicYear: string | undefined;
+  paymentOption: { paymentOptionId: string; type: string; name: string };
+  installment: any;
+  hasSnapshot: boolean;
+  snapshot: any | null;
+  feeConfig: any | null;
+}
+
+// ============================================================
+// SOURCE 1 (FIRST PRIORITY): student's own fee snapshot
+// ============================================================
+
+/**
+ * Student's own fee snapshot (StudentFeeStructure) for a year.
+ * Prefers the record matching the student's current academicYear,
+ * else falls back to any record for that year.
+ *
+ * NOTE: always scoped by programId so a student who changes program
+ * (e.g. UKG -> 1st Std) gets a distinct snapshot.
+ */
+const findStudentSnapshot = async (student: any, year: number) => {
+  const records: any[] = await StudentFeeStructure.find({
+    instituteId: student.instituteId,
+    studentId: student._id,
+    programId: student.programId,
+    year: Number(year),
+  }).lean();
+
+  if (!records.length) return null;
+
+  return (
+    records.find(
+      (rec: any) =>
+        student.academicYear && rec.academicYear === student.academicYear
+    ) || records[0]
+  );
+};
+
+// ============================================================
+// SOURCE 2 (FALLBACK): fee configuration of student's academic year
+// ============================================================
+
+const getStudentFeeConfig = async (student: any) => {
+  const academicYear: string | undefined = student?.academicYear;
+
+  if (!academicYear) {
+    throw new FeeError(400, "Student has no academic year assigned");
+  }
+
+  const feeConfig = await FeeConfiguration.findOne({
+    instituteId: student.instituteId,
+    academicYear,
+  });
+
+  if (!feeConfig) {
+    throw new FeeError(
+      404,
+      `Fee configuration not found for academic year ${academicYear}`
+    );
+  }
+
+  return { feeConfig, academicYear };
+};
+
+// ============================================================
+// STUDENT FEE STRUCTURE (create + update)
 // ============================================================
 
 /**
  * Returns the student's own fee snapshot for a year.
- * If it does not exist yet (first payment for that year), it is created
- * as a COPY of the current FeeConfiguration. After that, later changes in
- * FeeConfiguration never affect this student for that year.
+ * If it does not exist yet (first payment for that year under the
+ * current program), it is created as a COPY of the student's
+ * academic-year FeeConfiguration.
+ *
+ * Scoped by programId so a mid-course program change (UKG -> 1st Std)
+ * produces a brand new snapshot for the same year.
  */
 export const getOrCreateStudentFeeStructure = async (
   student: any,
   year: number,
-  paymentOptionId: string
+  paymentOptionId: string,
+  concession: ConcessionContext
 ) => {
   const filter = {
     instituteId: student.instituteId,
@@ -150,25 +240,19 @@ export const getOrCreateStudentFeeStructure = async (
     year: Number(year),
   };
 
-  // 1. Snapshot already exists -> use it
+  // 1. Snapshot already exists for this program + year
   const existing = await StudentFeeStructure.findOne(filter);
   if (existing) return existing;
 
-  // 2. Not found -> read master fee configuration
-  const feeConfig = await FeeConfiguration.findOne({
-    instituteId: student.instituteId,
-  });
-
-  if (!feeConfig) {
-    throw new Error("Fee configuration not found for this institute");
-  }
+  // 2. Read master fee config for student's academic year
+  const { feeConfig, academicYear } = await getStudentFeeConfig(student);
 
   const course = feeConfig.courseFeeStructure.find(
     (item: any) => item.courseId === student.programId
   );
 
   if (!course) {
-    throw new Error("Course fee not configured for this student");
+    throw new FeeError(404, "Course fee not configured for this student");
   }
 
   const yearData = course.years.find(
@@ -176,7 +260,7 @@ export const getOrCreateStudentFeeStructure = async (
   );
 
   if (!yearData) {
-    throw new Error(`Year ${year} fee not found for this course`);
+    throw new FeeError(404, `Year ${year} fee not found for this course`);
   }
 
   const paymentOption = yearData.paymentOptions.find(
@@ -184,19 +268,39 @@ export const getOrCreateStudentFeeStructure = async (
   );
 
   if (!paymentOption) {
-    throw new Error(`Payment option ${paymentOptionId} not found`);
+    throw new FeeError(404, `Payment option ${paymentOptionId} not found`);
   }
 
-  // 3. Copy installments (COPIES – not references to FeeConfiguration)
-  const installments = paymentOption.installments.map((installment: any) => ({
-    number: Number(installment.number),
-    amount: Number(installment.amount),
-    tuitionFee: Number(installment.tuitionFee || 0),
-    otherFee: Number(installment.otherFee || 0),
-    dueDate: new Date(installment.dueDate),
-    status: "pending",
-    paidAmount: 0,
-  }));
+  const { concessionPercentage, concessionName, appliedReferrals } = concession;
+
+  // Year-level tuition concession
+  const totalTuitionConcession = round2(
+    (Number(yearData.tuitionFee || 0) * concessionPercentage) / 100
+  );
+
+  // 3. Copy installments with concession applied at snapshot time
+  const installments = paymentOption.installments.map((installment: any) => {
+    const tuitionFee = Number(installment.tuitionFee || 0);
+    const otherFee = Number(installment.otherFee || 0);
+    const instTuitionConcession = round2(
+      (tuitionFee * concessionPercentage) / 100
+    );
+    const payableAmount = round2(tuitionFee - instTuitionConcession + otherFee);
+
+    return {
+      number: Number(installment.number),
+      amount: Number(installment.amount),
+      tuitionFee,
+      otherFee,
+      tuitionConcession: instTuitionConcession,
+      otherFeeConcession: 0,
+      concessionPercentage,
+      payableAmount,
+      dueDate: new Date(installment.dueDate),
+      status: "pending",
+      paidAmount: 0,
+    };
+  });
 
   // 4. Create the snapshot
   try {
@@ -206,11 +310,22 @@ export const getOrCreateStudentFeeStructure = async (
       instituteId: student.instituteId,
       programId: student.programId,
       courseName: course.name,
+
+      academicYear,
       year: Number(year),
+
       totalAmount: Number(yearData.amount || 0),
       tuitionFee: Number(yearData.tuitionFee || 0),
       otherFee: Number(yearData.otherFee || 0),
       otherFeeDescription: yearData.otherFeeDescription || "",
+
+      concessionPercentage,
+      concessionName,
+      appliedReferrals,
+      tuitionConcession: totalTuitionConcession,
+      otherFeeConcession: 0,
+      concessionAmount: totalTuitionConcession,
+
       paymentOption: {
         paymentOptionId: paymentOption.paymentOptionId,
         type: paymentOption.type,
@@ -219,10 +334,20 @@ export const getOrCreateStudentFeeStructure = async (
       },
     });
   } catch (error: any) {
-    // Two requests (verify + webhook) created it at the same time
     if (error?.code === 11000) {
+      // Concurrent create — try to fetch the now-existing record
       const created = await StudentFeeStructure.findOne(filter);
       if (created) return created;
+
+      // Still nothing on this program -> legacy {studentId, year} index
+      // is blocking. Surface a clear, actionable error.
+      throw new FeeError(
+        409,
+        `A fee structure already exists for student ${student._id} and year ${year} ` +
+          `under a different program. The unique index must include programId ` +
+          `(and academicYear). Please drop "studentId_1_year_1" and create ` +
+          `"studentId_1_programId_1_year_1_academicYear_1".`
+      );
     }
     throw error;
   }
@@ -230,8 +355,7 @@ export const getOrCreateStudentFeeStructure = async (
 
 /**
  * Marks one installment of the student's snapshot as paid.
- * Idempotent: calling it twice for the same payment does nothing.
- * Never throws – it is a side effect and must not break the payment flow.
+ * Idempotent.
  */
 export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
   try {
@@ -243,14 +367,21 @@ export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
     });
 
     if (!student) {
-      console.error("markInstallmentAsPaid: Student not found", tuition.studentId);
+      console.error(
+        "markInstallmentAsPaid: Student not found",
+        tuition.studentId
+      );
       return;
     }
+
+    // Prefer the tuition's own courseId (captured at payment time)
+    // so we don't accidentally target a different program's snapshot.
+    const programId = tuition.courseId || student.programId;
 
     const feeStructure: any = await StudentFeeStructure.findOne({
       instituteId: tuition.instituteId,
       studentId: student._id,
-      programId: student.programId,
+      programId,
       year: Number(tuition.year),
     });
 
@@ -258,6 +389,8 @@ export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
       console.error(
         "markInstallmentAsPaid: StudentFeeStructure not found",
         student._id,
+        "program",
+        programId,
         "year",
         tuition.year
       );
@@ -276,7 +409,6 @@ export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
       return;
     }
 
-    // Already marked (webhook + verify both fired) -> nothing to do
     if (installment.status === "paid") return;
 
     installment.status = "paid";
@@ -288,7 +420,7 @@ export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
     await feeStructure.save();
 
     console.log(
-      `Installment ${tuition.installmentNumber} marked as paid for student ${tuition.studentId}`
+      `Installment ${tuition.installmentNumber} marked as paid for student ${tuition.studentId} (program ${programId})`
     );
   } catch (error) {
     console.error("markInstallmentAsPaid Error:", error);
@@ -297,9 +429,10 @@ export const markInstallmentAsPaid = async (tuition: any): Promise<void> => {
 
 /**
  * Everything that must happen once a TuitionFee record becomes PAID:
- *  1. make sure the student's fee snapshot exists
- *  2. mark the installment as paid in the snapshot
- * Safe to call more than once.
+ *  1. snapshot first - if it exists, nothing else is needed
+ *  2. only when no snapshot: read the academic-year FeeConfiguration
+ *     and create the snapshot
+ *  3. mark the installment as paid
  */
 export const finalizePaidTuition = async (tuition: any): Promise<void> => {
   try {
@@ -311,15 +444,37 @@ export const finalizePaidTuition = async (tuition: any): Promise<void> => {
     });
 
     if (!student) {
-      console.error("finalizePaidTuition: Student not found", tuition.studentId);
+      console.error(
+        "finalizePaidTuition: Student not found",
+        tuition.studentId
+      );
       return;
     }
 
-    await getOrCreateStudentFeeStructure(
-      student,
-      Number(tuition.year),
-      tuition.paymentOptionId
+    // If the tuition record was for a different program than the
+    // student's current one (e.g. program changed), trust the tuition.
+    const programId = tuition.courseId || student.programId;
+    const studentForSnapshot = { ...student.toObject(), programId };
+
+    const existing = await findStudentSnapshot(
+      studentForSnapshot,
+      Number(tuition.year)
     );
+
+    if (!existing) {
+      const { feeConfig } = await getStudentFeeConfig(studentForSnapshot);
+      const concession = await buildConcessionContext(
+        studentForSnapshot,
+        feeConfig
+      );
+
+      await getOrCreateStudentFeeStructure(
+        studentForSnapshot,
+        Number(tuition.year),
+        tuition.paymentOptionId,
+        concession
+      );
+    }
 
     await markInstallmentAsPaid(tuition);
   } catch (error) {
@@ -328,7 +483,7 @@ export const finalizePaidTuition = async (tuition: any): Promise<void> => {
 };
 
 /**
- * Flips a pending/failed TuitionFee to PAID exactly once (atomic),
+ * Flips a pending/failed TuitionFee to PAID exactly once,
  * then finalizes the student's fee snapshot.
  */
 const settleTuitionPayment = async (orderId: string, paymentId?: string) => {
@@ -349,8 +504,6 @@ const settleTuitionPayment = async (orderId: string, paymentId?: string) => {
     return updated;
   }
 
-  // Already paid earlier (e.g. webhook arrived before verify).
-  // Finalize is idempotent, so it is safe to re-run it.
   const existing = await TuitionFee.findOne({ orderId });
   if (existing && existing.status === PAYMENT_STATUS.PAID) {
     await finalizePaidTuition(existing);
@@ -359,42 +512,26 @@ const settleTuitionPayment = async (orderId: string, paymentId?: string) => {
 };
 
 // ============================================================
-// FEE RESOLUTION  (snapshot first -> fee configuration fallback)
+// FEE RESOLUTION (snapshot first -> fee configuration fallback)
 // ============================================================
-
-interface ResolvedInstallment {
-  source: "studentFeeStructure" | "feeConfiguration";
-  courseId: string;
-  courseName: string;
-  paymentOption: { paymentOptionId: string; type: string; name: string };
-  installment: any;
-  hasSnapshot: boolean;
-}
 
 const resolveInstallment = async (
   student: any,
   year: number,
   paymentOptionId: string,
-  installmentNumber: number,
-  feeConfig: any
+  installmentNumber: number
 ): Promise<ResolvedInstallment> => {
   // ---------- 1. STUDENT FEE STRUCTURE FIRST ----------
-  const snapshot: any = await StudentFeeStructure.findOne({
-    instituteId: student.instituteId,
-    studentId: student._id,
-    programId: student.programId,
-    year: Number(year),
-  }).lean();
+  const snapshot: any = await findStudentSnapshot(student, year);
 
   if (snapshot) {
     const option = snapshot.paymentOption;
 
-    // Once a student has started paying a year, the option is locked
     if (!option || option.paymentOptionId !== paymentOptionId) {
       throw new FeeError(
         400,
         `Payment option already chosen for year ${year}` +
-        `${option?.name ? ` (${option.name})` : ""}. It cannot be changed.`
+          `${option?.name ? ` (${option.name})` : ""}. It cannot be changed.`
       );
     }
 
@@ -413,6 +550,7 @@ const resolveInstallment = async (
       source: "studentFeeStructure",
       courseId: snapshot.programId,
       courseName: snapshot.courseName,
+      academicYear: snapshot.academicYear ?? student.academicYear,
       paymentOption: {
         paymentOptionId: option.paymentOptionId,
         type: option.type,
@@ -420,13 +558,13 @@ const resolveInstallment = async (
       },
       installment,
       hasSnapshot: true,
+      snapshot,
+      feeConfig: null,
     };
   }
 
-  // ---------- 2. NOT FOUND -> FEE CONFIGURATION ----------
-  if (!feeConfig) {
-    throw new FeeError(404, "Fee configuration not found");
-  }
+  // ---------- 2. FALLBACK: FEE CONFIGURATION ----------
+  const { feeConfig, academicYear } = await getStudentFeeConfig(student);
 
   const course = feeConfig.courseFeeStructure.find(
     (item: any) => item.courseId === student.programId
@@ -470,6 +608,7 @@ const resolveInstallment = async (
     source: "feeConfiguration",
     courseId: course.courseId,
     courseName: course.name,
+    academicYear,
     paymentOption: {
       paymentOptionId: paymentOption.paymentOptionId,
       type: paymentOption.type,
@@ -477,36 +616,75 @@ const resolveInstallment = async (
     },
     installment,
     hasSnapshot: false,
+    snapshot: null,
+    feeConfig,
   };
 };
 
-const calculateConcession = async (student: any, feeConfig: any) => {
+/**
+ * Builds the full concession context: percentage + name + referrals.
+ */
+const buildConcessionContext = async (
+  student: any,
+  feeConfig: any,
+  yearData?: any
+): Promise<ConcessionContext> => {
   const feeConcession = await FeeConcession.findOne({
     studentId: student._id,
     instituteId: student.instituteId,
     programId: student.programId,
     status: "approved",
-  }).select("referralIds");
+  }).select("referralIds reason counsellorName");
 
-  let matchedReferrals: any[] = [];
+  let appliedReferrals: AppliedReferral[] = [];
   let concessionPercentage = 0;
 
-  // Referral percentages live in FeeConfiguration
   if (feeConcession?.referralIds?.length && feeConfig?.referrals?.length) {
-    matchedReferrals = feeConfig.referrals.filter((ref: any) =>
+    const matched = feeConfig.referrals.filter((ref: any) =>
       feeConcession.referralIds.includes(ref.referralId)
     );
 
-    concessionPercentage = matchedReferrals.reduce(
-      (total: number, ref: any) => total + Number(ref.percentage || 0),
+    appliedReferrals = matched.map((ref: any) => ({
+      referralId: ref.referralId,
+      name: ref.name || "",
+      percentage: Number(ref.percentage || 0),
+    }));
+
+    concessionPercentage = appliedReferrals.reduce(
+      (sum, r) => sum + r.percentage,
       0
     );
   }
 
-  return { matchedReferrals, concessionPercentage };
+  const concessionName =
+    (feeConcession?.reason && String(feeConcession.reason).trim()) ||
+    appliedReferrals
+      .map((r) => r.name)
+      .filter(Boolean)
+      .join(" + ");
+
+  const baseTuitionFee = Number(yearData?.tuitionFee || 0);
+  const tuitionConcession = round2(
+    (baseTuitionFee * concessionPercentage) / 100
+  );
+
+  return {
+    concessionPercentage,
+    concessionName,
+    appliedReferrals,
+    tuitionConcession,
+  };
 };
 
-/** Concession applies on tuition fee only; other fee is an add-on */
+const calculateConcession = async (student: any, feeConfig: any) => {
+  const ctx = await buildConcessionContext(student, feeConfig);
+  return {
+    matchedReferrals: ctx.appliedReferrals,
+    concessionPercentage: ctx.concessionPercentage,
+  };
+};
+
+/** Concession applies on tuition fee only; other fee is an add-on. */
 const computeAmounts = (installment: any, concessionPercentage: number) => {
   const tuitionFee = Number(installment.tuitionFee || 0);
   const otherFee = Number(installment.otherFee || 0);
@@ -517,22 +695,39 @@ const computeAmounts = (installment: any, concessionPercentage: number) => {
   return { tuitionFee, otherFee, tuitionConcession, totalAmount };
 };
 
-const getGivenAmount = async (student: any, year: number) => {
-  const paidFeeRecords = await PaidFee.find({
-    studentId: student._id.toString(),
-    instituteId: student.instituteId,
-    programId: student.programId,
-    year: Number(year),
-  }).lean();
+const getConcessionForResolved = async (
+  student: any,
+  resolved: ResolvedInstallment
+) => {
+  if (resolved.snapshot) {
+    return {
+      matchedReferrals: resolved.snapshot.appliedReferrals || [],
+      concessionPercentage: Number(resolved.snapshot.concessionPercentage || 0),
+    };
+  }
+  return calculateConcession(student, resolved.feeConfig);
+};
 
-  return paidFeeRecords.reduce(
-    (sum, pf) => sum + Number(pf.totalAmount || 0),
-    0
-  );
+const computeResolvedAmounts = (
+  resolved: ResolvedInstallment,
+  concessionPercentage: number
+) => {
+  const inst = resolved.installment;
+
+  if (resolved.hasSnapshot && typeof inst.payableAmount === "number") {
+    return {
+      tuitionFee: Number(inst.tuitionFee || 0),
+      otherFee: Number(inst.otherFee || 0),
+      tuitionConcession: Number(inst.tuitionConcession || 0),
+      totalAmount: round2(Number(inst.payableAmount)),
+    };
+  }
+
+  return computeAmounts(inst, concessionPercentage);
 };
 
 // ============================================================
-// SHARED "CREATE PAYMENT" PREPARATION (Razorpay / Instamojo / CCAvenue)
+// SHARED "CREATE PAYMENT" PREPARATION
 // ============================================================
 
 const prepareTuitionPayment = async (reqStudent: any, body: any) => {
@@ -557,10 +752,11 @@ const prepareTuitionPayment = async (reqStudent: any, body: any) => {
   const yearNumber = Number(year);
   const instNumber = Number(installmentNumber);
 
-  // Prevent duplicate payment
+  // Prevent duplicate payment — scoped by courseId (program) as well.
   const alreadyPaid = await TuitionFee.findOne({
     studentId: student.studentId,
     instituteId: student.instituteId,
+    courseId: student.programId,
     year: String(yearNumber),
     installmentNumber: instNumber,
     paymentOptionId,
@@ -574,19 +770,13 @@ const prepareTuitionPayment = async (reqStudent: any, body: any) => {
     );
   }
 
-  const feeConfig: any = await FeeConfiguration.findOne({
-    instituteId: student.instituteId,
-  });
-
   const resolved = await resolveInstallment(
     student,
     yearNumber,
     paymentOptionId,
-    instNumber,
-    feeConfig
+    instNumber
   );
 
-  // Snapshot is the source of truth for paid status
   if (resolved.installment.status === "paid") {
     throw new FeeError(
       400,
@@ -594,22 +784,12 @@ const prepareTuitionPayment = async (reqStudent: any, body: any) => {
     );
   }
 
-  const { matchedReferrals, concessionPercentage } = await calculateConcession(
-    student,
-    feeConfig
-  );
+  const { matchedReferrals, concessionPercentage } =
+    await getConcessionForResolved(student, resolved);
 
-  const amounts = computeAmounts(resolved.installment, concessionPercentage);
+  const amounts = computeResolvedAmounts(resolved, concessionPercentage);
 
-  // "Given amount" (offline advance) is adjusted only on the first payment
-  // of the year, i.e. while the student has no snapshot yet.
-  const givenAmount = resolved.hasSnapshot
-    ? 0
-    : await getGivenAmount(student, yearNumber);
-
-  const finalAmount = round2(
-    Math.max(amounts.totalAmount + GST_AMOUNT - givenAmount, 0)
-  );
+  const finalAmount = round2(Math.max(amounts.totalAmount + GST_AMOUNT, 0));
 
   if (finalAmount <= 0) {
     throw new FeeError(400, "No payable amount for this installment");
@@ -624,7 +804,6 @@ const prepareTuitionPayment = async (reqStudent: any, body: any) => {
     matchedReferrals,
     concessionPercentage,
     ...amounts,
-    givenAmount,
     finalAmount,
   };
 };
@@ -642,14 +821,13 @@ const buildTuitionRecord = (
   courseId: ctx.resolved.courseId,
   courseName: ctx.resolved.courseName,
 
-  academicYear: ctx.student.academicYear,
+  academicYear: ctx.resolved.academicYear,
   year: ctx.year,
   installmentNumber: ctx.installmentNumber,
   paymentOptionId: ctx.paymentOptionId,
   paymentType: ctx.resolved.paymentOption.type,
   paymentOptionName: ctx.resolved.paymentOption.name,
 
-  // Original fee breakdown
   originalAmount: ctx.resolved.installment.amount,
   tuitionFee: ctx.tuitionFee,
   otherFee: ctx.otherFee,
@@ -791,7 +969,6 @@ export const verifyRazorpayPayment = async (
       });
     }
 
-    // Marks paid + creates snapshot + marks installment (all idempotent)
     await settleTuitionPayment(razorpay_order_id, razorpay_payment_id);
 
     return res.json({
@@ -824,8 +1001,6 @@ export const razorpayWebhook = async (
       });
     }
 
-    // Signature must be calculated on the RAW body. If your app exposes it
-    // (express.json verify -> req.rawBody) it is used, otherwise fall back.
     const rawBody: string = (req as any).rawBody
       ? (req as any).rawBody.toString()
       : JSON.stringify(req.body);
@@ -874,7 +1049,6 @@ export const razorpayWebhook = async (
 // INSTAMOJO
 // ============================================================
 
-/** Asks Instamojo itself whether the payment request was really paid */
 const verifyInstamojoPayment = async (paymentRequestId: string) => {
   const { apiKey, authToken } = getInstamojoConfig();
 
@@ -915,7 +1089,6 @@ const verifyInstamojoPayment = async (paymentRequestId: string) => {
   }
 };
 
-/** Verified settlement used by both the redirect and the webhook */
 const settleInstamojoPayment = async (orderId: string): Promise<boolean> => {
   const tuition = await TuitionFee.findOne({ orderId });
   if (!tuition) return false;
@@ -955,10 +1128,11 @@ export const createInstamojoTuitionPayment = async (
       "https://www.instamojo.com/api/1.1/payment-requests/",
       qs.stringify({
         amount: ctx.finalAmount.toFixed(2),
-        purpose: `Tuition Fee - Year ${ctx.year} - ${ctx.resolved.paymentOption.type === "full_payment"
+        purpose: `Tuition Fee - Year ${ctx.year} - ${
+          ctx.resolved.paymentOption.type === "full_payment"
             ? "Full Payment"
             : `Installment ${ctx.installmentNumber}`
-          }`,
+        }`,
         buyer_name: `${student.firstname} ${student.lastname}`,
         email: student.email,
         phone: student.mobileNo,
@@ -1019,7 +1193,6 @@ export const instamojoTuitionRedirect = async (
       return res.redirect(`${FRONTEND_URL}/fee-payment?status=error`);
     }
 
-    // Never trust query-string status – confirm with Instamojo
     const settled = await settleInstamojoPayment(orderId);
 
     let status = "Pending";
@@ -1035,7 +1208,9 @@ export const instamojoTuitionRedirect = async (
     }
 
     return res.redirect(
-      `${FRONTEND_URL}/fee-payment?status=${status}&orderId=${encodeURIComponent(orderId)}`
+      `${FRONTEND_URL}/fee-payment?status=${status}&orderId=${encodeURIComponent(
+        orderId
+      )}`
     );
   } catch (error) {
     console.error("Instamojo Redirect Error:", error);
@@ -1169,31 +1344,36 @@ export const ccavenueTuitionSuccess = async (
       if (!tuition) {
         console.error("Tuition fee record not found for orderId:", orderId);
         return res.redirect(
-          `${FRONTEND_URL}/fee-payment?status=error&orderId=${encodeURIComponent(orderId)}`
+          `${FRONTEND_URL}/fee-payment?status=error&orderId=${encodeURIComponent(
+            orderId
+          )}`
         );
       }
 
-      // Paid amount must match what we asked for
       if (
         responseData.amount !== undefined &&
-        Math.abs(Number(responseData.amount) - Number(tuition.totalAmount)) > 0.01
+        Math.abs(Number(responseData.amount) - Number(tuition.totalAmount)) >
+          0.01
       ) {
         console.error(
           `CCAvenue amount mismatch for ${orderId}: expected ${tuition.totalAmount}, got ${responseData.amount}`
         );
         return res.redirect(
-          `${FRONTEND_URL}/fee-payment?status=error&orderId=${encodeURIComponent(orderId)}`
+          `${FRONTEND_URL}/fee-payment?status=error&orderId=${encodeURIComponent(
+            orderId
+          )}`
         );
       }
 
       await settleTuitionPayment(orderId, trackingId);
 
       return res.redirect(
-        `${FRONTEND_URL}/fee-payment?status=success&orderId=${encodeURIComponent(orderId)}`
+        `${FRONTEND_URL}/fee-payment?status=success&orderId=${encodeURIComponent(
+          orderId
+        )}`
       );
     }
 
-    // Not successful
     if (orderId) {
       await TuitionFee.findOneAndUpdate(
         { orderId, status: PAYMENT_STATUS.PENDING },
@@ -1202,7 +1382,9 @@ export const ccavenueTuitionSuccess = async (
     }
 
     return res.redirect(
-      `${FRONTEND_URL}/fee-payment?status=failed&orderId=${encodeURIComponent(orderId)}`
+      `${FRONTEND_URL}/fee-payment?status=failed&orderId=${encodeURIComponent(
+        orderId
+      )}`
     );
   } catch (error) {
     console.error("CCAvenue Tuition Success Error:", error);
@@ -1217,7 +1399,6 @@ export const ccavenueTuitionCancel = async (
   try {
     const { workingKey } = getCCAvenueConfig();
 
-    // CCAvenue cancel can arrive as query (?order_id) or as POST encResp
     let orderId = String(req.query?.order_id || "");
 
     if (!orderId && req.body?.encResp && workingKey) {
@@ -1268,7 +1449,6 @@ export const manualTuitionPayment = async (
       remarks,
     } = req.body;
 
-    // 1. Validate required fields
     if (
       !studentId ||
       !year ||
@@ -1300,7 +1480,6 @@ export const manualTuitionPayment = async (
       });
     }
 
-    // 2. Find student (by ObjectId or by studentId code)
     let student: any = null;
 
     if (mongoose.Types.ObjectId.isValid(studentId)) {
@@ -1325,7 +1504,6 @@ export const manualTuitionPayment = async (
       });
     }
 
-    // 3. Duplicate transaction id
     const existingTransaction = await TuitionFee.findOne({
       $or: [{ paymentId: transactionId }, { transactionId }],
     });
@@ -1340,23 +1518,19 @@ export const manualTuitionPayment = async (
     const yearNumber = Number(year);
     const instNumber = Number(installmentNumber);
 
-    // 4. Resolve installment: student snapshot first, fee configuration next
-    const feeConfig: any = await FeeConfiguration.findOne({
-      instituteId: student.instituteId,
-    });
-
     const resolved = await resolveInstallment(
       student,
       yearNumber,
       paymentOptionId,
-      instNumber,
-      feeConfig
+      instNumber
     );
 
-    // 5. Already paid?
+    const academicYear = resolved.academicYear;
+
     const alreadyPaid = await TuitionFee.findOne({
       studentId: student.studentId,
       instituteId: student.instituteId,
+      courseId: resolved.courseId,
       year: String(yearNumber),
       installmentNumber: instNumber,
       paymentOptionId,
@@ -1371,11 +1545,10 @@ export const manualTuitionPayment = async (
       });
     }
 
-    // 6. Concession + expected amount
     const { matchedReferrals, concessionPercentage } =
-      await calculateConcession(student, feeConfig);
+      await getConcessionForResolved(student, resolved);
 
-    const amounts = computeAmounts(resolved.installment, concessionPercentage);
+    const amounts = computeResolvedAmounts(resolved, concessionPercentage);
     const calculatedFinalAmount = round2(amounts.totalAmount + GST_AMOUNT);
 
     const amountDifference = Math.abs(Number(amount) - calculatedFinalAmount);
@@ -1386,7 +1559,6 @@ export const manualTuitionPayment = async (
       );
     }
 
-    // 7. Record payment
     const orderId = `MANUAL_${Date.now()}_${Math.random()
       .toString(36)
       .substring(2, 8)}`;
@@ -1398,10 +1570,10 @@ export const manualTuitionPayment = async (
       courseId: resolved.courseId,
       courseName: resolved.courseName,
 
-      academicYear: student.academicYear,
+      academicYear,
       year: String(yearNumber),
 
-      installmentNumber: instNumber,
+      installmentNumber: Number(instNumber),
       paymentOptionId,
       paymentOptionName: resolved.paymentOption.name,
       paymentType: resolved.paymentOption.type || "installment",
@@ -1417,11 +1589,11 @@ export const manualTuitionPayment = async (
 
       amount: amounts.totalAmount,
       gstAmount: GST_AMOUNT,
-      totalAmount: Number(amount), // amount actually received
+      totalAmount: Number(amount),
 
       orderId,
       status: PAYMENT_STATUS.PAID,
-      gateway: "manual",
+      gateway: PAYMENT_GATEWAY.MANUAL,
 
       paymentId: transactionId,
       paidDate,
@@ -1435,7 +1607,6 @@ export const manualTuitionPayment = async (
       matchedReferrals,
     });
 
-    // 8. Create snapshot (if first payment of the year) + mark installment
     await finalizePaidTuition(manualPayment);
 
     return res.status(200).json({
@@ -1445,6 +1616,7 @@ export const manualTuitionPayment = async (
         orderId,
         studentId: student.studentId,
         studentName: `${student.firstname} ${student.lastname}`,
+        academicYear,
         year,
         installmentNumber,
         paymentOptionId,
@@ -1598,7 +1770,6 @@ export const getAllTransactionReceipts = async (
       });
     }
 
-    // Only paid transactions, newest first
     const transactions = await TuitionFee.find({
       studentId: student.studentId,
       instituteId: student.instituteId,
@@ -1614,6 +1785,7 @@ export const getAllTransactionReceipts = async (
       paymentType: transaction.paymentType,
       installmentNumber: transaction.installmentNumber,
       year: transaction.year,
+      academicYear: transaction.academicYear,
       paymentOptionName: transaction.paymentOptionName,
       totalAmount: transaction.totalAmount,
       orderId: transaction.orderId,

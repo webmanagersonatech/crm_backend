@@ -1,7 +1,7 @@
 import express from "express";
 
 import {
-  createStudentFeeStructure,
+  upsertStudentFeeStructure,
   getStudentFeeStructure,
   getStudentFeeStructures,
   getNextPendingInstallment,
@@ -9,6 +9,7 @@ import {
   markInstallmentAsPaid,
   deleteStudentFeeStructure,
 } from "./controller";
+import { protect } from "../../middlewares/auth";
 
 const router = express.Router();
 
@@ -18,8 +19,7 @@ const router = express.Router();
  * POST /student-fee-structure/create
  */
 router.post(
-  "/create",
-  createStudentFeeStructure
+  "/upsert", protect, upsertStudentFeeStructure
 );
 
 /**

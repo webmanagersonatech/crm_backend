@@ -2,7 +2,10 @@ import Joi from "joi";
 
 export const feeConfigurationSchema = Joi.object({
   instituteId: Joi.string().required(),
-
+  academicYear: Joi.string()
+    .pattern(/^\d{4}-\d{4}$/)
+    .required()
+    .messages({ "string.pattern.base": "Academic year must be like 2023-2024" }),
   courseFeeStructure: Joi.array()
     .items(
       Joi.object({
