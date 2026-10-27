@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLead, listLeads, createThirdPartyLead,verifyFacebookWebhook,getMediumSources,receiveFacebookWebhook, getLead, exportFollowups,markAsNonDuplicate, updateLead, deleteLead, exportLeads, listOnlyFollowups, getduplicateLeads, createLeadfromonline, uploadMiddleware } from './controller';
+import { createLead, listLeads, createThirdPartyLead,verifyFacebookWebhook,getPhoneMatchedLeads,getMediumSources,receiveFacebookWebhook, getLead, exportFollowups,markAsNonDuplicate, updateLead, deleteLead, exportLeads, listOnlyFollowups, getduplicateLeads, createLeadfromonline, uploadMiddleware } from './controller';
 import { protect } from '../../middlewares/auth';
 import { thirdPartyAuth } from '../../middlewares/thirdpartyAuth';
 
@@ -13,6 +13,7 @@ router.get('/', protect, listLeads);
 router.get('/medium-sources', protect, getMediumSources); 
 router.get('/duplicates', protect, getduplicateLeads);
 router.get("/facebook/webhook", verifyFacebookWebhook);
+router.get('/phone-matched', protect, getPhoneMatchedLeads);
 router.post("/facebook/webhook", receiveFacebookWebhook);
 router.patch('/:id/non-duplicate', protect, markAsNonDuplicate);
 router.get('/followupsreport', protect, listOnlyFollowups);

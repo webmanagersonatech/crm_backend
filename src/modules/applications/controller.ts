@@ -106,6 +106,9 @@ const cleanText = (text: string) => {
   return text.replace(/[^a-zA-Z ]/g, "");
 };
 
+const normalizePhone = (phone: unknown): string =>
+  String(phone ?? "").replace(/\D/g, "").slice(-10);
+
 // get first letter of each word (INSTITUTE)
 const getInstituteShortName = (name: string) => {
   return cleanText(name)
@@ -1152,6 +1155,25 @@ export const createApplicationByStudent = async (
         .status(400)
         .json({ success: false, message: "Required student fields missing" });
 
+    const normalizedApplicationPhone = normalizePhone(mobileNo);
+
+    const matchedLead = normalizedApplicationPhone
+      ? await LeadModel.findOne({
+        instituteId,
+        phoneNumber: { $regex: `${normalizedApplicationPhone}$` },
+      }).sort({ createdAt: 1 })
+      : null;
+
+
+
+    const matchedLeadId = matchedLead?.leadId || undefined;
+    const matchedLeadStatus = matchedLead?.status || undefined;
+    const matchedLeadUserId = matchedLead?.createdBy
+      ? String(matchedLead.createdBy)
+      : undefined;
+
+
+
     const student = await Student.findOne({
       email,
       instituteId,
@@ -1254,6 +1276,16 @@ export const createApplicationByStudent = async (
         }
       }
 
+      // 🔥 preserve existing values if no new match
+      const linkedLeadId =
+        matchedLeadId || existingApplication?.leadId || undefined;
+      const linkedUserId =
+        matchedLeadUserId || existingApplication?.userId || undefined;
+      const linkedInteractions =
+        matchedLeadStatus ||
+        existingApplication?.interactions ||
+        "New";
+
 
       application = await Application.findOneAndUpdate(
         { applicationId: student.applicationId },
@@ -1277,16 +1309,27 @@ export const createApplicationByStudent = async (
           status: "Pending",
           formStatus,
           overallCutoff,
+          ...(linkedLeadId && { leadId: linkedLeadId }),
+          ...(linkedUserId && { userId: linkedUserId }),
+          interactions: linkedInteractions,
         },
         { new: true }
 
       );
+
+      if (matchedLead && application?.applicationId) {
+        await LeadModel.findByIdAndUpdate(matchedLead._id, {
+          $set: { applicationId: application.applicationId },
+        });
+      }
+
       student.country = country;
       student.state = state;
       student.programId = programId;
       student.city = city;
       student.academicYear = academicYear;
-      student.interactions = application?.interactions;
+      student.interactions =
+        student.interactions = linkedInteractions;
       student.bloodGroup = bloodGroup;
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
@@ -1300,6 +1343,7 @@ export const createApplicationByStudent = async (
     } else {
       // ✅ Create new application
       const formStatus = hasEducation === false ? "Complete" : "Incomplete";
+      const interactions = matchedLeadStatus || "New";
       application = await Application.create({
         instituteId,
         program,
@@ -1319,15 +1363,24 @@ export const createApplicationByStudent = async (
         paymentStatus: "Unpaid",
         status: "Pending",
         formStatus,
-        overallCutoff
+        overallCutoff,
+        interactions,
+        ...(matchedLeadId && { leadId: matchedLeadId }),
+        ...(matchedLeadUserId && { userId: matchedLeadUserId }),
       });
+
+      if (matchedLead && application?.applicationId) {
+        await LeadModel.findByIdAndUpdate(matchedLead._id, {
+          $set: { applicationId: application.applicationId },
+        });
+      }
 
       student.applicationId = application?.applicationId;
       student.country = country;
       student.state = state;
       student.city = city;
       student.programId = programId;
-      student.interactions = "New"
+      student.interactions = interactions;
       student.bloodGroup = bloodGroup;
       student.hostelWilling = hostelWilling;
       student.siblingsCount = siblingsCount;
@@ -2564,6 +2617,28 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
         console.log(
           `🗑️ Deleted ${deletedFeeStructures.deletedCount} student fee structure records`
         );
+      }
+
+
+
+      // Remove applicationId from the linked Lead
+      if (application.leadId) {
+        const updatedLead = await LeadModel.findOneAndUpdate(
+          {
+            leadId: application.leadId,
+            instituteId: instituteId,
+          },
+          {
+            $unset: { applicationId: "" },
+          },
+          { new: true }
+        );
+
+        if (updatedLead) {
+          console.log(
+            `🗑️ Removed applicationId from lead: ${application.leadId}`
+          );
+        }
       }
 
 

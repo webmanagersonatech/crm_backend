@@ -1520,6 +1520,97 @@ export const exportFollowups = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+export const getPhoneMatchedLeads = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const instituteId = "INS-DHJMFQ6G";
+
+    const leads = await Lead.find({ instituteId }).lean();
+    const applications = await Application.find({ instituteId }).lean();
+
+    const normalizePhone = (phone: unknown): string =>
+      String(phone ?? "").replace(/\D/g, "").slice(-10);
+
+    // Pull the phone out of wherever it lives on the application
+    const getApplicationPhone = (app: any): string => {
+      // 1. Direct fields (if your schema ever adds them)
+      const direct =
+        app.phoneNumber ??
+        app.mobileNumber ??
+        app.contactNumber;
+      if (direct) return String(direct);
+
+      // 2. Search every section in personalDetails for a "Contact Number" style field
+      const sections = Array.isArray(app.personalDetails)
+        ? app.personalDetails
+        : [];
+
+      for (const section of sections) {
+        const fields = section?.fields || {};
+
+        // Prefer exact "Contact Number"
+        if (fields["Contact Number"]) return String(fields["Contact Number"]);
+
+        // Fallback: any key containing "contact number" / "mobile" / "phone"
+        for (const key of Object.keys(fields)) {
+          const k = key.toLowerCase();
+          if (
+            k.includes("contact number") ||
+            k.includes("mobile number") ||
+            k.includes("phone number")
+          ) {
+            const v = fields[key];
+            if (v) return String(v);
+          }
+        }
+      }
+
+      return "";
+    };
+
+    const result = leads
+      .map((lead: any) => {
+        const leadPhone = normalizePhone(lead.phoneNumber);
+        if (!leadPhone) return null;
+
+        const matchedApplication = applications.find((app: any) => {
+          const appPhone = normalizePhone(getApplicationPhone(app));
+          return appPhone && appPhone === leadPhone;
+        });
+
+        if (!matchedApplication) return null;
+
+        return {
+          leadId: lead._id,
+          leadName: lead.candidateName,   // your Lead schema uses candidateName, not name
+          applicationId: matchedApplication.applicationId,
+          applicationName: matchedApplication.applicantName,
+          phoneNumber: lead.phoneNumber,
+          phoneMatched: true,
+        };
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      instituteId,
+      count: result.length,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error matching lead phone numbers:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to match lead phone numbers",
+    });
+  }
+};
+
+
 export const exportLeads = async (req: AuthRequest, res: Response) => {
   try {
     const {
