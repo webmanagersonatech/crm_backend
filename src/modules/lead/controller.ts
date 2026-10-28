@@ -818,7 +818,71 @@ export const getduplicateLeads = async (req: AuthRequest, res: Response) => {
 };
 
 
+export const getLeadsByPhoneSimple = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Not authorized" });
+    }
 
+    const { phone, instituteId: qInstituteId } = req.query;
+
+    const normalizedPhone = String(phone ?? "").replace(/\D/g, "").slice(-10);
+    if (normalizedPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid 10-digit phone number is required",
+      });
+    }
+
+    const instituteId =
+      (user.role === "superadmin"
+        ? (qInstituteId as string) || user.instituteId
+        : user.instituteId) || (qInstituteId as string | undefined);
+
+    if (!instituteId) {
+      return res.status(400).json({ success: false, message: "Institute id missing" });
+    }
+
+    const filter: any = {
+      instituteId,
+      phoneNumber: { $regex: `${normalizedPhone}$` },
+      // 🚫 Exclude leads that are already linked to an application
+      $or: [
+        { applicationId: { $exists: false } },
+        { applicationId: null },
+        { applicationId: "" },
+      ],
+    };
+
+    if (user.role === "user") filter.createdBy = user.id;
+
+    const rawLeads = await Lead.find(filter)
+      .sort({ createdAt: 1 })
+      .populate({ path: "creator", select: "firstname lastname" })
+      .lean();
+
+    const data = rawLeads.map((l: any) => ({
+      leadId: l.leadId,
+      leadName: l.candidateName || "",
+      phoneNumber: l.phoneNumber || "",
+      status: l.status || "",
+      leadGivenBy:
+        l.creator && (l.creator.firstname || l.creator.lastname)
+          ? `${l.creator.firstname || ""} ${l.creator.lastname || ""}`.trim()
+          : "",
+      leadCreatedAt: l.createdAt,
+    }));
+
+    return res.status(200).json({ success: true, count: data.length, data });
+  } catch (error: any) {
+    console.error("getLeadsByPhoneSimple failed:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to match leads",
+    });
+  }
+};
 
 export const verifyFacebookWebhook = (
   req: Request,
