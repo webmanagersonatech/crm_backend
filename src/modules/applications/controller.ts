@@ -737,11 +737,15 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
 
 
     let leadStatus = "New";
+    let leadCreatedBy: string | undefined;
 
     if (leadId) {
       const lead = await LeadModel.findOne({ leadId });
       if (lead?.status) {
         leadStatus = lead.status;
+      }
+      if (lead?.createdBy) {
+        leadCreatedBy = String(lead.createdBy);
       }
     }
     const plainPassword = generatePassword();
@@ -807,19 +811,20 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .filter(Boolean)
         .join(" ");
 
+    const applicationUserId = leadCreatedBy || createdBy;
 
     // Create application (store **arrays** directly!)
     const application = await Application.create({
       instituteId,
       programId,
       program,
-      userId: createdBy,
+      userId: applicationUserId,
       leadId,
       interactions: leadStatus,
       applicationSource,
       academicYear,
-      personalDetails,   // store array, not flattened object
-      educationDetails,  // store array, not flattened object
+      personalDetails,
+      educationDetails,
       applicantName,
       country,
       state,
@@ -841,7 +846,6 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         { leadId },
         { applicationId: application.applicationId },
         { new: true }
-
       );
 
     return res.status(200).json({
@@ -1439,6 +1443,7 @@ export const getApplicationByStudent = async (req: StudentAuthRequest, res: Resp
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 export const getApplicationByStudents = async (
   req: StudentAuthRequest,
