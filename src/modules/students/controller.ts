@@ -19,7 +19,8 @@ import crypto from "crypto";
 import Otp from "../otp/model";
 import FeeConfiguration from "../fee-configuartion/model"
 import FeeConcession from "../fees-concession/model"
-import TuitionFee from "../tuition-payment/model"
+import AdvanceToken from "../advance-tokenamount/model"
+
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
@@ -27,6 +28,38 @@ const defaultClient = SibApiV3Sdk.ApiClient.instance;
 defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 const SECRET_KEY = "sonacassecretkey@2025";
+
+
+
+const ADVANCE_TOKEN_ACADEMIC_YEAR = "2027-2028";
+const DEFAULT_ADVANCE_TOKEN_FEE = 20000;
+
+const ADVANCE_TOKEN_AMOUNT_BY_PROGRAM: Record<string, number> = {
+  // Pre-school
+  PREKG00001: 20000,
+  LKG0000002: 20000,
+  UKG0000003: 20000,
+
+  // Std I – V
+  STD0000001: 20000,
+  STD0000002: 20000,
+  STD0000003: 20000,
+  STD0000004: 20000,
+  STD0000005: 20000,
+
+  // Std VI – IX
+  STD0000006: 20000,
+  STD0000007: 20000,
+  STD0000008: 20000,
+  STD0000009: 3,
+};
+
+const resolveAdvanceTokenFee = (programId: string | undefined): number => {
+  if (programId && ADVANCE_TOKEN_AMOUNT_BY_PROGRAM[programId] != null) {
+    return ADVANCE_TOKEN_AMOUNT_BY_PROGRAM[programId];
+  }
+  return DEFAULT_ADVANCE_TOKEN_FEE;
+};
 
 // Generate random password
 const generatePassword = (length = 8) => {
@@ -122,6 +155,312 @@ const sendPasswordEmail = async (
   };
 
   await emailApi.sendTransacEmail(emailData);
+};
+
+
+export const getAdvancePaymentRelatedData = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const studentId = req.student?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // 1. Find student
+    const student = await Student.findById(studentId).select(
+      "_id firstname lastname studentId email mobileNo applicationId instituteId programId academicYear"
+    );
+
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // 2. Validate student's academic year
+    const studentAcademicYear = String(
+      student.academicYear ?? ""
+    ).trim();
+
+    if (studentAcademicYear !== ADVANCE_TOKEN_ACADEMIC_YEAR) {
+      return res.status(403).json({
+        success: false,
+        message: `Advance payment is only available for academic year ${ADVANCE_TOKEN_ACADEMIC_YEAR}`,
+      });
+    }
+
+    // 3. Find application
+    const application = await Application.findOne({
+      applicationId: student.applicationId,
+      instituteId: student.instituteId,
+    }).select("formStatus paymentStatus academicYear programId");
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+    // 4. Validate application form
+    if (application.formStatus !== "Complete") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please complete your application before proceeding to advance payment.",
+      });
+    }
+
+    // 5. Validate application fee payment
+    if (application.paymentStatus !== "Paid") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please pay your application fee before proceeding to advance payment.",
+      });
+    }
+
+    // 6. Fetch institute settings and courses
+    const settingsDoc = await Settings.findOne({
+      instituteId: student.instituteId,
+    }).select("gstPercentage paymentMethod academicYear courses");
+
+    // 7. Resolve academic year
+    const academicYear =
+      student.academicYear ||
+      application.academicYear ||
+      settingsDoc?.academicYear ||
+      "";
+
+    // 8. Resolve program ID
+    const programId =
+      student.programId ||
+      application.programId ||
+      undefined;
+
+    // 9. Match program ID with configured course ID
+    const matchedCourse = settingsDoc?.courses?.find(
+      (course: any) =>
+        String(course.courseId).trim() ===
+        String(programId ?? "").trim()
+    );
+
+    const programName = matchedCourse?.name ?? "";
+
+    // 10. Calculate advance token fee
+    const advanceTokenFee = resolveAdvanceTokenFee(programId);
+
+    const gstPercentage = Number(
+      settingsDoc?.gstPercentage ?? 0
+    );
+
+    const gstAmount =
+      (advanceTokenFee * gstPercentage) / 100;
+
+    const totalAmount = advanceTokenFee + gstAmount;
+
+
+    const existingAdvancePayment = await AdvanceToken.findOne({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      applicationId: student.applicationId,
+      academicYear: student.academicYear,
+      status: "paid",
+    }).lean();
+
+    const isPaid = Boolean(existingAdvancePayment);
+
+    // 11. Return payment data
+    return res.status(200).json({
+      success: true,
+      data: {
+        name: `${student.firstname ?? ""} ${student.lastname ?? ""
+          }`.trim(),
+
+        email: student.email,
+        mobileNo: student.mobileNo,
+        applicationId: student.applicationId,
+
+        programId,
+        programName,
+        courseId: programId,
+
+        amount: advanceTokenFee,
+        gstAmount,
+        advanceTokenFee: totalAmount,
+        isPaid,
+        academicYear,
+        paymentMethod: settingsDoc?.paymentMethod,
+        gstPercentage,
+      },
+    });
+  } catch (err) {
+    console.error(
+      "getAdvancePaymentRelatedData error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch advance payment details",
+    });
+  }
+};
+/* ============================================================
+   GET ADVANCE TOKEN RECEIPT DATA
+============================================================ */
+export const getAdvanceReceiptData = async (
+  req: StudentAuthRequest,
+  res: Response
+) => {
+  try {
+    const studentId = req.student?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    /* 1. Find student */
+    const student = await Student.findById(studentId).select(
+      "_id firstname lastname studentId email mobileNo applicationId instituteId programId academicYear"
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    /* 2. Find the paid advance token for this student + AY */
+    const advancePayment = await AdvanceToken.findOne({
+      studentId: student.studentId,
+      instituteId: student.instituteId,
+      applicationId: student.applicationId,
+      academicYear: student.academicYear,
+      status: "paid",
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!advancePayment) {
+      return res.status(404).json({
+        success: false,
+        errorCode: "ADVANCE_PAYMENT_NOT_FOUND",
+        message: "No paid advance token found for this student",
+      });
+    }
+
+    /* 3. Resolve institute info + settings (logo, courses, gst) */
+    const settingsDoc = await Settings.findOne({
+      instituteId: student.instituteId,
+    })
+      .select(
+        "gstPercentage paymentMethod courses logo instituteName name"
+      )
+      .lean();
+
+    const ap: any = advancePayment;
+
+    const programId =
+      ap.programId ?? student.programId ?? "";
+
+    const matchedCourse = settingsDoc?.courses?.find(
+      (course: any) =>
+        String(course.courseId).trim() === String(programId).trim()
+    );
+
+    const programName = matchedCourse?.name ?? "";
+
+    /* 4. Institute name (with fallback to Institution doc) */
+    let instituteName =
+      (settingsDoc as any)?.instituteName ??
+      (settingsDoc as any)?.name ??
+      "";
+
+    if (!instituteName) {
+      const instDoc = await Institution.findOne({
+        instituteId: student.instituteId,
+      })
+        .select("name instituteName")
+        .lean();
+
+      instituteName =
+        (instDoc as any)?.name ??
+        (instDoc as any)?.instituteName ??
+        "";
+    }
+
+    /* 5. Institute logo */
+    const instituteLogo =
+      (settingsDoc as any)?.logo ?? "";
+
+    /* 6. Amounts */
+    const gstPercentage = Number(settingsDoc?.gstPercentage ?? 0);
+
+    const amount = Number(ap.amount ?? 0);
+    const gstAmount = Number(ap.gstAmount ?? 0);
+    const totalAmount = Number(ap.totalAmount ?? amount + gstAmount);
+
+    /* 7. Compose receipt */
+    return res.status(200).json({
+      success: true,
+      data: {
+        /* Student */
+        name: `${student.firstname ?? ""} ${student.lastname ?? ""}`.trim(),
+        email: student.email,
+        mobileNo: student.mobileNo,
+
+        /* Institute */
+        instituteName,
+        instituteLogo,
+
+        /* Application / program */
+        applicationId: student.applicationId,
+        programId,
+        programName,
+        academicYear: ap.academicYear ?? student.academicYear,
+
+        /* Amounts */
+        amount,
+        gstAmount,
+        totalAmount,
+        gstPercentage,
+
+        /* Payment */
+        paymentId: ap.paymentId ?? null,
+        orderId: ap.orderId ?? null,
+        transactionId: ap.paymentId ?? ap.orderId ?? null,
+        gateway: ap.gateway ?? null,
+        paymentMethod:
+          settingsDoc?.paymentMethod ?? ap.gateway ?? null,
+        paymentStatus: "Paid",
+
+        /* Timing */
+        paymentDate: ap.updatedAt ?? ap.createdAt ?? null,
+
+        /* Convenience */
+        isAdvanceToken: true,
+      },
+    });
+  } catch (err) {
+    console.error("getAdvanceReceiptData error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch advance receipt data",
+    });
+  }
 };
 
 // Create a new student

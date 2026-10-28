@@ -23,7 +23,9 @@ import {
     reshareCredentials,
     getNewAndAdmittedStudents,
     adminChangeStudentPassword,
-    getStudentWithToken
+    getAdvancePaymentRelatedData,
+    getStudentWithToken,
+    getAdvanceReceiptData,
 } from "./controller";
 
 const router = express.Router();
@@ -45,6 +47,17 @@ router.put(
     adminChangeStudentPassword
 );
 router.get("/payment-data", studentProtect, getpaymentrelateddata);
+router.get("/receipt-data", studentProtect, getReceiptData);
+router.get(
+    "/advance-payment-data",
+    studentProtect,
+    getAdvancePaymentRelatedData
+);
+router.get(
+    "/advance-receipt-data",
+    studentProtect,
+    getAdvanceReceiptData
+);
 router.get("/receipt-data", studentProtect, getReceiptData);
 router.get('/export', protect, exportStudents);
 router.post("/changenewpassword", changePasswordwithotpverfiedstudent);
