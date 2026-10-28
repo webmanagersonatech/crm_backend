@@ -112,7 +112,7 @@ const sendPasswordEmail = async (
       
       <p>Greetings from <b>${instituteName}</b>.</p>
 
-      <p>Thank you for completing the registration for the <b>Online Application 2026 – Admission</b>.</p>
+      <p>Thank you for completing the registration for the <b>Online Application – Admission</b>.</p>
 
       <p>Your login credentials are given below:</p>
 
@@ -519,6 +519,9 @@ export const createStudent = async (req: Request, res: Response) => {
         message: "Institution not found"
       });
     }
+
+
+    
 
     // 🔐 GENERATE PASSWORD
     const plainPassword = generatePassword();
