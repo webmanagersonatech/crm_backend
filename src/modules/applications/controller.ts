@@ -821,6 +821,7 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
       userId: applicationUserId,
       leadId,
       interactions: leadStatus,
+      createdBy,
       applicationSource,
       academicYear,
       personalDetails,
@@ -2029,6 +2030,7 @@ export const listApplications = async (req: AuthRequest, res: Response) => {
     const locationCondition = req.query.locationCondition || "equals";
     // 🎯 Optional filters
     if (req.query.academicYear) filter.academicYear = req.query.academicYear
+    if (req.query.userId) filter.userId = req.query.userId;
     if (req.query.instituteId) filter.instituteId = req.query.instituteId
     if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
     if (req.query.formStatus) {
@@ -2368,6 +2370,7 @@ export const exportApplications = async (req: AuthRequest, res: Response) => {
     // 🎯 Optional filters (same filtering logic as listApplications)
     if (req.query.academicYear) filter.academicYear = req.query.academicYear
     if (req.query.instituteId) filter.instituteId = req.query.instituteId
+    if (req.query.userId) filter.userId = req.query.userId;
     if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
     if (req.query.formStatus) {
       filter.formStatus = req.query.formStatus;

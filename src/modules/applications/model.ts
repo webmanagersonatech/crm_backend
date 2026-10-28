@@ -18,6 +18,7 @@ export interface IApplication extends Document {
   state?: string;
   city?: string;
   userId?: string;
+  createdBy?: string;
   leadId?: string;
   overallCutoff?: number;
   academicYear: string;
@@ -65,6 +66,7 @@ const ApplicationSchema = new Schema<IApplication>(
       default: "New",
     },
     userId: { type: String },
+    createdBy: { type: String, index: true },
     leadId: { type: String },
     academicYear: { type: String, required: true },
     personalDetails: { type: [SectionSchema], default: [] },
