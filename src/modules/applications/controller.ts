@@ -17,6 +17,7 @@ import FeeConcession from '../fees-concession/model'
 import StudentFeeStructure from '../StudentFeeStructure/model'
 import TuitionFee from '../tuition-payment/model'
 import PaidFee from '../paidfee/model'
+import AdvanceTokenPayment from "./model";
 
 // 🧾 Create Application
 const SibApiV3Sdk = require('sib-api-v3-sdk');
@@ -653,7 +654,6 @@ export const createApplication = async (req: AuthRequest, res: Response) => {
         .json({ success: false, message: "Required student fields missing" });
 
     const allowDuplicateInstitute = "INS-3-ZXYXKM";
-
 
     if (instituteId !== allowDuplicateInstitute) {
 
@@ -2581,20 +2581,6 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
       }
 
 
-      // 3c. Delete Paid Fee records
-      const paidFees = await PaidFee.find({
-        studentId: student._id,
-        instituteId: instituteId,
-      });
-
-      if (paidFees.length > 0) {
-        const deletedPaidFees = await PaidFee.deleteMany({
-          studentId: student._id,
-          instituteId: instituteId,
-        });
-
-        console.log(`🗑️ Deleted ${deletedPaidFees.deletedCount} paid fee records`);
-      }
 
       // 3b. Delete Tuition Fee records
       const tuitionFees = await TuitionFee.find({
@@ -2615,6 +2601,28 @@ export const deleteApplication = async (req: AuthRequest, res: Response) => {
         studentId: student._id,
         instituteId: instituteId,
       });
+
+
+
+      const advanceTokenFilter: any = {
+        instituteId: instituteId,
+        $or: [
+          { studentId: student.studentId },
+          { studentId: student._id },
+        ],
+      };
+
+      const advanceTokens = await AdvanceTokenPayment.find(advanceTokenFilter);
+
+      if (advanceTokens.length > 0) {
+        const deletedAdvanceTokens = await AdvanceTokenPayment.deleteMany(
+          advanceTokenFilter
+        );
+
+        console.log(
+          `🗑️ Deleted ${deletedAdvanceTokens.deletedCount} advance token payment records`
+        );
+      }
 
       if (studentFeeStructures.length > 0) {
         const deletedFeeStructures = await StudentFeeStructure.deleteMany({

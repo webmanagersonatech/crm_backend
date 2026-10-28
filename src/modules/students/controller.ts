@@ -51,7 +51,7 @@ const ADVANCE_TOKEN_AMOUNT_BY_PROGRAM: Record<string, number> = {
   STD0000006: 20000,
   STD0000007: 20000,
   STD0000008: 20000,
-  STD0000009: 3,
+  STD0000009: 20000,
 };
 
 const resolveAdvanceTokenFee = (programId: string | undefined): number => {
