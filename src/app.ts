@@ -94,6 +94,199 @@ app.use('/api/fee-concession', feesconcession);
 app.use('/api/studentfeestructure', StudentFeeStructure);
 app.use('/api/captcha', captchaRoutes);
 app.use('/api/paid-fees', paidFeeRoutes);
-app.get('/', (req, res) => res.json({ ok: true, message: 'API Hika is running' }));
+app.use('/api/advancetoken-amount', advancetokenamount);
+
+app.get("/", (req, res) => {
+    res.status(200).send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>HiKa API | System Status</title>
+
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        body {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          font-family: Inter, Arial, sans-serif;
+          color: #f8fafc;
+          background:
+            radial-gradient(circle at top left, #164e63 0, transparent 40%),
+            radial-gradient(circle at bottom right, #312e81 0, transparent 40%),
+            #020617;
+        }
+
+        .container {
+          width: 100%;
+          max-width: 620px;
+          padding: 48px 32px;
+          text-align: center;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 24px;
+          background: rgba(15, 23, 42, 0.82);
+          box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
+          backdrop-filter: blur(16px);
+        }
+
+        .logo {
+          width: 76px;
+          height: 76px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 24px;
+          border-radius: 22px;
+          color: white;
+          font-size: 34px;
+          font-weight: 800;
+          background: linear-gradient(135deg, #06b6d4, #6366f1);
+          box-shadow: 0 10px 35px rgba(6, 182, 212, 0.25);
+        }
+
+        h1 {
+          font-size: clamp(30px, 6vw, 42px);
+          letter-spacing: -1.5px;
+          margin-bottom: 12px;
+        }
+
+        h1 span {
+          color: #22d3ee;
+        }
+
+        .subtitle {
+          color: #94a3b8;
+          font-size: 15px;
+          line-height: 1.7;
+          margin-bottom: 30px;
+        }
+
+        .status {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 11px 18px;
+          border: 1px solid rgba(34, 197, 94, 0.25);
+          color: #86efac;
+          background: rgba(34, 197, 94, 0.09);
+          font-size: 14px;
+          font-weight: 600;
+          margin-bottom: 32px;
+        }
+
+        .dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #22c55e;
+          box-shadow: 0 0 12px #22c55e;
+          animation: pulse 1.6s infinite;
+        }
+
+        .details {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          text-align: left;
+        }
+
+        .item {
+          padding: 18px;
+          border-radius: 14px;
+          border: 1px solid rgba(148, 163, 184, 0.13);
+          background: rgba(30, 41, 59, 0.55);
+        }
+
+        .label {
+          display: block;
+          color: #94a3b8;
+          font-size: 12px;
+          margin-bottom: 9px;
+        }
+
+        .value {
+          color: #e2e8f0;
+          font-size: 15px;
+          font-weight: 600;
+          overflow-wrap: anywhere;
+        }
+
+        .footer {
+          margin-top: 32px;
+          color: #64748b;
+          font-size: 12px;
+        }
+
+        @keyframes pulse {
+          50% { opacity: 0.4; }
+        }
+
+        @media (max-width: 420px) {
+          .container { padding: 36px 20px; }
+          .details { grid-template-columns: 1fr; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .dot { animation: none; }
+        }
+      </style>
+    </head>
+
+    <body>
+      <main class="container">
+        <div class="logo">H</div>
+
+        <h1>HiKa <span>API</span></h1>
+
+        <p class="subtitle">
+          Reliable. Secure. Connected.<br />
+          HiKa CRM backend service status.
+        </p>
+
+        <div class="status">
+          <span class="dot"></span>
+          API Service is Running
+        </div>
+
+        <div class="details">
+          <div class="item">
+            <span class="label">SERVICE</span>
+            <span class="value">HiKa CRM Backend</span>
+          </div>
+
+          <div class="item">
+            <span class="label">STATUS</span>
+            <span class="value">Operational</span>
+          </div>
+
+          <div class="item">
+            <span class="label">ENVIRONMENT</span>
+            <span class="value">Production API</span>
+          </div>
+
+          <div class="item">
+            <span class="label">RESPONSE</span>
+            <span class="value">HTTP 200 OK</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} HiKa CRM. All rights reserved.
+        </div>
+      </main>
+    </body>
+    </html>
+  `);
+});
+
 
 export default app;
