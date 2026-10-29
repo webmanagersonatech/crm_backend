@@ -10,6 +10,9 @@ import Student from "../students/model";
 import FeeConfiguration from "../fee-configuartion/model";
 import StudentFeeStructure from "../StudentFeeStructure/model";
 import { StudentAuthRequest } from "../../middlewares/studentAuth";
+import Permission from "../permissions/model";
+import moment from "moment-timezone";
+import { AuthRequest } from "../auth";
 
 /* ============================================================
    ADVANCE TOKEN CONFIG
@@ -375,7 +378,7 @@ export const applyPaidAdvanceTokenToFeeStructure = async (
       (i: any) =>
         i.status !== "paid" &&
         Number(i.payableAmount ?? i.amount ?? 0) >
-          Number(i.appliedNow || 0)
+        Number(i.appliedNow || 0)
     );
 
     if (unpaid.length > 0) {
@@ -388,7 +391,7 @@ export const applyPaidAdvanceTokenToFeeStructure = async (
       unpaid.forEach((inst: any) => {
         const owed = round2(
           Number(inst.payableAmount ?? inst.amount ?? 0) -
-            Number(inst.appliedNow || 0)
+          Number(inst.appliedNow || 0)
         );
 
         let share = perRounded;
@@ -414,8 +417,8 @@ export const applyPaidAdvanceTokenToFeeStructure = async (
           inst.status === "paid"
             ? originalPayable
             : round2(
-                Math.max(originalPayable - inst.appliedNow, 0)
-              );
+              Math.max(originalPayable - inst.appliedNow, 0)
+            );
       });
     }
   }
@@ -424,8 +427,7 @@ export const applyPaidAdvanceTokenToFeeStructure = async (
   const entryDate = paidDate ?? new Date();
   const entryDescription =
     description ||
-    `Advance token paid via ${gateway}${
-      paymentId ? ` — ${paymentId}` : ""
+    `Advance token paid via ${gateway}${paymentId ? ` — ${paymentId}` : ""
     }`;
 
   snapshot.givenEntries = [
@@ -484,9 +486,8 @@ const finalizeAdvanceTokenPayment = async (
     orderId: advance.orderId,
     gateway,
     paidDate: advance.updatedAt ?? new Date(),
-    description: `Advance token paid via ${gateway}${
-      paymentId ? ` — ${paymentId}` : ""
-    }`,
+    description: `Advance token paid via ${gateway}${paymentId ? ` — ${paymentId}` : ""
+      }`,
   });
 };
 
@@ -935,5 +936,405 @@ export const advanceInstamojoWebhook = async (
   } catch (error) {
     console.log("Advance instamojo webhook error:", error);
     return res.status(500).send("Webhook failed");
+  }
+};
+
+
+
+
+// ========================================================
+// GET ALL PAID ADVANCE TOKEN PAYMENTS
+// (role-based + date filter + search + pagination)
+// ========================================================
+export const getAllPaidAdvanceTokenPayments = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ---------------- PAGINATION ----------------
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(String(req.query.limit), 10) || 10)
+    );
+    const skip = (page - 1) * limit;
+
+    // ---------------- FILTERS ----------------
+    const search = String(req.query.search || "").trim();
+    const startDate = req.query.startDate ? String(req.query.startDate) : "";
+    const endDate = req.query.endDate ? String(req.query.endDate) : "";
+    const gateway = String(req.query.gateway || "all");
+    const requestedInstituteId = String(req.query.instituteId || "all");
+
+    const query: any = { status: "paid" };
+
+    // ---------------- ROLE ACCESS ----------------
+    if (user.role === "superadmin") {
+      if (requestedInstituteId !== "all") {
+        query.instituteId = requestedInstituteId;
+      }
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+    } else {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const advancePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Advance Token Amount"
+      );
+
+      if (!advancePermission?.view) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to view advance token payments",
+        });
+      }
+
+      query.instituteId = user.instituteId;
+    }
+
+    // ---------------- DATE FILTER ----------------
+    const createdAt: any = {};
+
+    if (startDate) {
+      const start = moment.tz(startDate, "YYYY-MM-DD", true, "Asia/Kolkata");
+      if (!start.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid startDate. Use YYYY-MM-DD.",
+        });
+      }
+      createdAt.$gte = start.startOf("day").toDate();
+    }
+
+    if (endDate) {
+      const end = moment.tz(endDate, "YYYY-MM-DD", true, "Asia/Kolkata");
+      if (!end.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid endDate. Use YYYY-MM-DD.",
+        });
+      }
+      createdAt.$lte = end.endOf("day").toDate();
+    }
+
+    if (startDate && endDate && createdAt.$gte > createdAt.$lte) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate must be before or equal to endDate.",
+      });
+    }
+
+    if (Object.keys(createdAt).length) {
+      query.createdAt = createdAt;
+    }
+
+    // ---------------- GATEWAY FILTER ----------------
+    if (gateway !== "all") {
+      const allowedGateways = ["razorpay", "instamojo", "ccavenue"];
+      if (!allowedGateways.includes(gateway)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment gateway",
+        });
+      }
+      query.gateway = gateway;
+    }
+
+    // ---------------- SEARCH ----------------
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escapedSearch, "i");
+
+      // Find students matching the search text — since `studentId` here is
+      // a string code (not an ObjectId), we match on the string `studentId`
+      // field directly rather than `$in: [...ObjectIds]`.
+      const matchingStudents = await Student.find({
+        ...(query.instituteId ? { instituteId: query.instituteId } : {}),
+        $or: [
+          { firstname: regex },
+          { lastname: regex },
+          { email: regex },
+          { mobileNo: regex },
+          { username: regex },
+          { studentId: regex },
+        ],
+      })
+        .select("studentId")
+        .lean();
+
+      const matchingStudentCodes = matchingStudents.map(
+        (s: any) => s.studentId
+      );
+
+      query.$or = [
+        { orderId: regex },
+        { paymentId: regex },
+        { applicationId: regex },
+        { studentId: regex },
+        { programId: regex },
+        { academicYear: regex },
+        ...(matchingStudentCodes.length
+          ? [{ studentId: { $in: matchingStudentCodes } }]
+          : []),
+      ];
+    }
+
+    // ---------------- FETCH + COUNT ----------------
+    // Uses the virtuals declared on the schema — no manual join needed.
+    const [payments, total] = await Promise.all([
+      AdvanceTokenPayment.find(query)
+        .populate({
+          path: "student",
+          select: "studentId firstname lastname email mobileNo username",
+        })
+        .populate({
+          path: "institute",
+          select: "name instituteName instituteId code",
+        })
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean({ virtuals: true }),
+
+      AdvanceTokenPayment.countDocuments(query),
+    ]);
+
+    // ---------------- SUMMARY ----------------
+    const [summary] = await AdvanceTokenPayment.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: { $ifNull: ["$totalAmount", "$amount"] } },
+          totalBaseAmount: { $sum: "$amount" },
+          totalGst: { $sum: { $ifNull: ["$gstAmount", 0] } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // ---------------- RESPONSE ----------------
+    return res.status(200).json({
+      success: true,
+
+      data: payments,
+
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1,
+      },
+
+      summary: {
+        totalPaidAmount: summary?.totalAmount ?? 0,
+        totalBaseAmount: summary?.totalBaseAmount ?? 0,
+        totalGst: summary?.totalGst ?? 0,
+        totalPaidCount: summary?.count ?? 0,
+      },
+
+      filters: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+        search: search || null,
+        gateway,
+        instituteId:
+          user.role === "superadmin" ? requestedInstituteId : user.instituteId,
+      },
+    });
+  } catch (err: any) {
+    console.error("getAllPaidAdvanceTokenPayments error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
+  }
+};
+
+// ========================================================
+// EXPORT ALL PAID ADVANCE TOKEN PAYMENTS (no pagination)
+// ========================================================
+export const exportAllPaidAdvanceTokenPayments = async (
+  req: AuthRequest,
+  res: Response
+) => {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ---------------- FILTERS ----------------
+    const search = String(req.query.search || "").trim();
+    const startDate = req.query.startDate ? String(req.query.startDate) : "";
+    const endDate = req.query.endDate ? String(req.query.endDate) : "";
+    const gateway = String(req.query.gateway || "all");
+    const requestedInstituteId = String(req.query.instituteId || "all");
+
+    const query: any = { status: "paid" };
+
+    // ---------------- ROLE ACCESS ----------------
+    if (user.role === "superadmin") {
+      if (requestedInstituteId !== "all") {
+        query.instituteId = requestedInstituteId;
+      }
+    } else if (user.role === "admin") {
+      query.instituteId = user.instituteId;
+    } else {
+      const permissionDoc = await Permission.findOne({
+        instituteId: user.instituteId,
+        userId: user.id,
+      });
+
+      const advancePermission = permissionDoc?.permissions.find(
+        (p: any) => p.moduleName === "Advance Token Amount"
+      );
+
+      if (!advancePermission?.download) {
+        return res.status(403).json({
+          success: false,
+          message: "You have no permission to download advance token payments",
+        });
+      }
+
+      query.instituteId = user.instituteId;
+    }
+
+    // ---------------- DATE FILTER ----------------
+    const createdAt: any = {};
+
+    if (startDate) {
+      const start = moment.tz(startDate, "YYYY-MM-DD", true, "Asia/Kolkata");
+      if (!start.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid startDate. Use YYYY-MM-DD.",
+        });
+      }
+      createdAt.$gte = start.startOf("day").toDate();
+    }
+
+    if (endDate) {
+      const end = moment.tz(endDate, "YYYY-MM-DD", true, "Asia/Kolkata");
+      if (!end.isValid()) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid endDate. Use YYYY-MM-DD.",
+        });
+      }
+      createdAt.$lte = end.endOf("day").toDate();
+    }
+
+    if (startDate && endDate && createdAt.$gte > createdAt.$lte) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate must be before or equal to endDate.",
+      });
+    }
+
+    if (Object.keys(createdAt).length) {
+      query.createdAt = createdAt;
+    }
+
+    // ---------------- GATEWAY FILTER ----------------
+    if (gateway !== "all") {
+      const allowedGateways = ["razorpay", "instamojo", "ccavenue"];
+      if (!allowedGateways.includes(gateway)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment gateway",
+        });
+      }
+      query.gateway = gateway;
+    }
+
+    // ---------------- SEARCH ----------------
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escapedSearch, "i");
+
+      const matchingStudents = await Student.find({
+        ...(query.instituteId ? { instituteId: query.instituteId } : {}),
+        $or: [
+          { firstname: regex },
+          { lastname: regex },
+          { email: regex },
+          { mobileNo: regex },
+          { username: regex },
+          { studentId: regex },
+        ],
+      })
+        .select("studentId")
+        .lean();
+
+      const matchingStudentCodes = matchingStudents.map(
+        (s: any) => s.studentId
+      );
+
+      query.$or = [
+        { orderId: regex },
+        { paymentId: regex },
+        { applicationId: regex },
+        { studentId: regex },
+        { programId: regex },
+        { academicYear: regex },
+        ...(matchingStudentCodes.length
+          ? [{ studentId: { $in: matchingStudentCodes } }]
+          : []),
+      ];
+    }
+
+    // ---------------- FETCH ALL (no pagination) ----------------
+    const payments = await AdvanceTokenPayment.find(query)
+      .populate({
+        path: "student",
+        select: "studentId firstname lastname email mobileNo username",
+      })
+      .populate({
+        path: "institute",
+        select: "name instituteName instituteId code",
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .lean({ virtuals: true });
+
+    // ---------------- RESPONSE ----------------
+    return res.status(200).json({
+      success: true,
+      message: "Paid advance token payments exported successfully",
+      data: payments,
+      totalCount: payments.length,
+      filters: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+        search: search || null,
+        gateway,
+        instituteId:
+          user.role === "superadmin" ? requestedInstituteId : user.instituteId,
+      },
+    });
+  } catch (err: any) {
+    console.error("exportAllPaidAdvanceTokenPayments error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error",
+    });
   }
 };
