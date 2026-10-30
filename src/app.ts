@@ -25,6 +25,7 @@ import { logger } from './middlewares/logger';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import summerCampRoutes from './modules/summercamp/routes';
+import sonaCampRoutes from './modules/sonachamp/routes';
 import mattrainingRoutes from './modules/mat-coaching-center/routes'
 import feeConfigurationRoutes from './modules/fee-configuartion/routes';
 import tuitionFeeRoutes from './modules/tuition-payment/routes';
@@ -41,26 +42,26 @@ const app = express();
 connectDB();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://sonavalliappapublicschool.com',
-        'https://www.sonavalliappapublicschool.com', 'https://scaleindia.in', 'https://www.tpt.edu.in', 'https://www.sonamedicalcollege.ac.in', 'https://www.sonabusinessschool.com', 'https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
-    credentials: true,
+  origin: ['http://localhost:3000', 'http://160.187.54.80:3000', 'https://sonavalliappapublicschool.com',
+    'https://www.sonavalliappapublicschool.com', 'https://scaleindia.in', 'https://www.tpt.edu.in', 'https://www.sonamedicalcollege.ac.in', 'https://www.sonabusinessschool.com', 'https://www.sonatech.ac.in', 'https://hika.sonastar.com', 'https://hikaapp.sonastar.com', 'https://hikaenq.sonastar.com', 'http://localhost:3001', 'http://160.187.54.80:3001', 'http://160.187.54.80:3002', 'http://localhost:3002'], // frontend URLs
+  credentials: true,
 }));
 declare module 'express-session' {
-    interface SessionData {
-        captcha: string | null;
-    }
+  interface SessionData {
+    captcha: string | null;
+  }
 }
 app.use(
-    session({
-        secret: "captcha-secret-key",
-        resave: false,
-        saveUninitialized: true,
-        cookie: {
-            secure: process.env.NODE_ENV === 'production', // Use secure in production
-            maxAge: 1000 * 60 * 10 // 10 minutes
-        },
-        name: 'captcha.sid' // Custom name to avoid conflicts
-    })
+  session({
+    secret: "captcha-secret-key",
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production', // Use secure in production
+      maxAge: 1000 * 60 * 10 // 10 minutes
+    },
+    name: 'captcha.sid' // Custom name to avoid conflicts
+  })
 );
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "100mb" }));
@@ -86,6 +87,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/dynamic-form-manage', dynamicformRoutes);
 app.use('/api/email-templates', emailtemplateRoutes);
 app.use('/api/summercamp', summerCampRoutes);
+app.use('/api/sona-champs', sonaCampRoutes);
 app.use('/api/mat-training', mattrainingRoutes);
 app.use('/api/fee-configuration', feeConfigurationRoutes);
 app.use('/api/ciicp', ciicpRoutes);
@@ -98,7 +100,7 @@ app.use('/api/paid-fees', paidFeeRoutes);
 app.use('/api/advancetoken-amount', advancetokenamount);
 
 app.get("/", (req, res) => {
-    res.status(200).send(`
+  res.status(200).send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
