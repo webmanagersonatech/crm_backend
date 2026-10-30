@@ -173,9 +173,22 @@ export const createSonaChamps = async (req: Request, res: Response) => {
 ========================= */
 export const listSonaChamps = async (req: AuthRequest, res: Response) => {
   try {
+
+
+
     const { page = 1, limit = 10 } = req.query;
 
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized - user not found",
+      });
+    }
+
     const perm = await checkPermission(req.user, "view");
+
     if (!perm.allowed) {
       return res
         .status(perm.message?.includes("Unauthorized") ? 401 : 403)
@@ -445,7 +458,7 @@ export const bulkUploadSonaChamps = async (
       const genderRaw = getValue(row, ["gender", "sex"]);
       const schoolName = getValue(row, ["schoolname", "school"]);
       const schoolLocation = getValue(row, ["schoollocation", "location", "schoolloc"]);
-      
+
       // ✅ OPTIONAL FIELDS
       const teacherCoordinatorName = getValue(row, ["teachercoordinatorname", "teachername", "teacher", "coordinator"]);
       const teacherCoordinatorMobile = getValue(row, ["teachercoordinatorMobile".toLowerCase(), "teachermobile", "teacherphone", "teachercontact"]);
@@ -553,7 +566,7 @@ export const bulkUploadSonaChamps = async (
     });
 
     const inserted = await SonaChamps.insertMany(records, {
-      ordered: false, 
+      ordered: false,
     });
 
     return res.status(201).json({
