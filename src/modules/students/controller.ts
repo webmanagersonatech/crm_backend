@@ -2384,7 +2384,11 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
       });
     }
 
-    const student = await Student.findById(studentId).select("-password");
+    const student = await Student.findById(studentId)
+      .select("-password")
+      .populate({ path: "institute", select: "name instituteName" });
+
+    console.log(student, "student")
 
     if (!student) {
       return res.status(404).json({
@@ -2402,7 +2406,9 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
     }).select("logo");
 
 
-
+    const instituteName =
+      (student as any).institute?.name ??
+      "";
     const insuitelogo = settings?.logo || null;
 
     const SPECIAL_INSTITUTE_IDS = [
@@ -2428,6 +2434,7 @@ export const getStudentWithToken = async (req: StudentAuthRequest, res: Response
           dontshowtutionfee: hideTuitionFee,
           lastname: student.lastname,
           insuitelogo,
+          instituteName,
           shownturtionfeepayment: showTuitionFeePayment,
           showhostelfeepayment: showHostelFeePayment,
         },
