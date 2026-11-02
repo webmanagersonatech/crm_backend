@@ -4,176 +4,28 @@ import Application from "../applications/model";
 import Institution from "../institutions/model";
 import { AuthRequest } from "../../middlewares/auth";
 import moment from "moment-timezone";
-
-
-// export const dashboardData = async (req: AuthRequest, res: Response) => {
-//   try {
-//     const { startDate, endDate, instituteId, page = 1, limit = 5 } = req.query;
-//     const user = req.user;
-
-//     if (!user) return res.status(401).json({ message: "Not authorized" });
-
-//     // ------------------ BASE FILTERS ------------------
-//     let leadFilter: any = {};
-//     let appFilter: any = {};
-
-//     if (user.role === "superadmin") {
-//       if (instituteId && instituteId !== "all") {
-//         leadFilter.instituteId = instituteId;
-//         appFilter.instituteId = instituteId;
-//       }
-//     } else if (user.role === "admin") {
-//       leadFilter.instituteId = user.instituteId;
-//       if (user.departments && user.departments.length > 0) {
-//         leadFilter.programId = { $in: user.departments }; // ✅ for leads
-
-//         // ⚠️ only if Application also has programId
-//         appFilter.programId = { $in: user.departments }; // ✅ for applications
-//       }
-//       appFilter.instituteId = user.instituteId;
-//     } else {
-//       leadFilter = { instituteId: user.instituteId, createdBy: user.id };
-//       appFilter = { instituteId: user.instituteId, userId: user.id };
-//     }
-
-//     // ------------------ CREATED DATE FILTER ------------------
-//     if (startDate || endDate) {
-//       const createdFilter: any = {};
-//       if (startDate) {
-//         const s = new Date(startDate as string);
-//         s.setHours(0, 0, 0, 0);
-//         createdFilter.$gte = s;
-//       }
-//       if (endDate) {
-//         const e = new Date(endDate as string);
-//         e.setHours(23, 59, 59, 999);
-//         createdFilter.$lte = e;
-//       }
-
-//       leadFilter.createdAt = createdFilter;
-//       appFilter.createdAt = createdFilter;
-//     }
-
-//     const { createdAt, ...leadBaseFilter } = leadFilter;
-
-//     // ------------------ FOLLOWUP LEAD FILTER ------------------
-//     const followUpLeadFilter: any = {
-//       ...leadBaseFilter,
-//       status: "Followup",
-//     };
-
-//     if (startDate && endDate) {
-//       const s = new Date(startDate as string);
-//       s.setHours(0, 0, 0, 0);
-//       const e = new Date(endDate as string);
-//       e.setHours(23, 59, 59, 999);
-
-//       followUpLeadFilter.followups = {
-//         $elemMatch: {
-//           status: "Followup",
-//           followUpDate: { $gte: s, $lte: e }, // only when both dates exist
-//         },
-//       };
-//     }
-
-//     const todayStart = new Date();
-//     todayStart.setHours(0, 0, 0, 0);
-
-//     const todayEnd = new Date();
-//     todayEnd.setHours(23, 59, 59, 999);
-
-//     const todayLeadFilter = {
-//       ...leadFilter,
-//       createdAt: { $gte: todayStart, $lte: todayEnd },
-//     };
-
-//     const todayAppFilter = {
-//       ...appFilter,
-//       createdAt: { $gte: todayStart, $lte: todayEnd },
-//     };
-
-//     const todayFollowUpLeadFilter = {
-//       ...leadBaseFilter,
-//       status: "Followup",
-//       followups: {
-//         $elemMatch: {
-//           status: "Followup",
-//           followUpDate: {
-//             $gte: todayStart,
-//             $lte: todayEnd,
-//           },
-//         },
-//       },
-//     };
-
-//     // If only one of startDate or endDate is provided, or neither → no followUpDate filter
-
-//     const followUpLeads = await Lead.countDocuments(followUpLeadFilter);
-
-//     // ------------------ DASHBOARD COUNTS ------------------
-//     const [
-//       totalInstitutes,
-//       totalLeads,
-//       totalApplications,
-//       paidApplications,
-//       unpaidApplications,
-//       closedLeads,
-//       notInterestedLeads,
-//       completeApplications,     // ✅ NEW
-//       incompleteApplications,
-//       todayLeads,
-//       todayApplications,
-//       todayFollowUpLeads
-//     ] = await Promise.all([
-//       Institution.countDocuments(),
-//       Lead.countDocuments(leadFilter),
-//       Application.countDocuments(appFilter),
-//       Application.countDocuments({ ...appFilter, paymentStatus: "Paid" }),
-//       Application.countDocuments({ ...appFilter, paymentStatus: "Unpaid" }),
-
-//       Lead.countDocuments({ ...leadFilter, status: "Closed" }),
-//       Lead.countDocuments({ ...leadFilter, status: "Not Interested" }),
-
-//       Application.countDocuments({ ...appFilter, formStatus: "Complete" }),
-//       Application.countDocuments({ ...appFilter, formStatus: "Incomplete" }),
-//       Lead.countDocuments(todayLeadFilter),
-//       Application.countDocuments(todayAppFilter),
-//       Lead.countDocuments(todayFollowUpLeadFilter),
-//     ]);
-
-//     res.status(200).json({
-//       success: true,
-//       data: {
-//         totalInstitutes,
-//         totalLeads,
-//         followUpLeads,
-//         totalApplications,
-//         paidApplications,
-//         unpaidApplications,
-//         closedLeads,
-//         notInterestedLeads,
-//         completeApplications,
-//         incompleteApplications,
-//         todayLeads,
-//         todayApplications,
-//         todayFollowUpLeads,
-//       }
-//     });
-
-//   } catch (error: any) {
-//     console.error("❌ Dashboard Data Error:", error);
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// };
-
-
+import User from "../auth/auth.model";
 
 export const dashboardData = async (req: AuthRequest, res: Response) => {
   try {
     const { startDate, endDate, instituteId, page = 1, limit = 5 } = req.query;
+
     const user = req.user;
 
+
     if (!user) return res.status(401).json({ message: "Not authorized" });
+
+
+    const userDetails = await User.findById(user.id)
+      .select("firstname lastname ")
+      .lean();
+
+    const accessorname = [
+      userDetails?.firstname?.trim(),
+      userDetails?.lastname?.trim(),
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     // ------------------ BASE FILTERS ------------------
     let leadFilter: any = {};
@@ -365,6 +217,7 @@ export const dashboardData = async (req: AuthRequest, res: Response) => {
     res.status(200).json({
       success: true,
       data: {
+        accessorname,
         totalInstitutes,
         totalLeads,
         followUpLeads,
