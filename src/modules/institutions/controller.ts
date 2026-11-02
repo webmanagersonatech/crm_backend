@@ -3,6 +3,7 @@ import Institution from './model';
 import User from '../auth/auth.model';
 import { createInstitutionSchema } from './institutions.sanitize';
 import { AuthRequest } from '../../middlewares/auth';
+import Settings from '../settings/model';
 
 export const createInstitution = async (req: AuthRequest, res: Response) => {
   const { error, value } = createInstitutionSchema.validate(req.body);
@@ -37,6 +38,9 @@ export const getInstitutionNameByInstituteId = async (req: AuthRequest, res: Res
 
     const institution = await Institution.findOne({ instituteId }).select("name");
 
+    const settings = await Settings.findOne({ instituteId: instituteId }).select("logo");
+    const insuitelogo = settings?.logo || null;
+
     if (!institution) {
       return res.status(404).json({
         success: false,
@@ -47,7 +51,8 @@ export const getInstitutionNameByInstituteId = async (req: AuthRequest, res: Res
     return res.status(200).json({
       success: true,
       data: {
-        name: institution.name
+        name: institution.name,
+        insuitelogo
       }
     });
 
